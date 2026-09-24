@@ -1,0 +1,25 @@
+.detection-modal { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 24px; background: rgba(8, 13, 22, 0.88); backdrop-filter: blur(8px); }
+.detection-modal__dialog { width: min(920px, 100%); max-height: 94vh; overflow: auto; border: 1px solid var(--outline-bright); border-radius: var(--radius-md); background: var(--surface-container-low); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8); }
+.detection-modal__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 18px 22px; border-bottom: 1px solid var(--outline-variant); }
+.detection-modal__eyebrow { color: var(--outline); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-family: var(--font-mono); }
+.detection-modal__header h2 { margin: 6px 0 0; display: inline-flex; align-items: center; padding: 0.25rem 0.85rem; background: #080d16; border: 1.5px solid #38bdf8; border-radius: var(--radius-sm); color: #ffffff; font-family: var(--font-mono); font-size: 1.45rem; font-weight: 800; letter-spacing: 0.1em; }
+.detection-modal__close { display: grid; place-items: center; width: 32px; height: 32px; color: var(--on-surface-variant); border: 1px solid var(--outline-variant); border-radius: var(--radius-sm); background: var(--surface-container); transition: all var(--transition-fast); }
+.detection-modal__close:hover { color: var(--text-primary); border-color: var(--primary); }
+.detection-modal__snapshot { display: grid; min-height: 250px; place-items: center; padding: 20px; background: #080d16; border-bottom: 1px solid var(--outline-variant); }
+.detection-modal__snapshot img { width: 100%; max-height: 420px; object-fit: contain; border-radius: var(--radius-sm); }
+.detection-modal__placeholder { display: grid; place-items: center; gap: 8px; color: var(--text-muted); }
+.detection-modal__body { padding: 20px 22px 24px; }
+.detection-modal__location, .detection-modal__flag { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 10px 14px; border: 1px solid var(--outline-variant); border-radius: var(--radius-sm); color: var(--on-surface); font-size: 0.78rem; background: var(--surface-container-lowest); }
+.detection-modal__location svg { color: var(--primary); }
+.detection-modal__location span + span::before { content: '·'; margin-right: 9px; color: var(--text-muted); }
+.detection-modal__flag { margin-top: 10px; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08); }
+.detection-modal__flag span { color: var(--on-surface-variant); }
+.detection-modal__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 16px; overflow: hidden; border: 1px solid var(--outline-variant); border-radius: var(--radius-sm); background: var(--outline-variant); }
+.detection-modal__grid > div { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; padding: 12px 14px; background: var(--surface-container-lowest); }
+.detection-modal__grid svg { grid-row: span 2; color: var(--primary); }
+.detection-modal__grid label { color: var(--outline); font-size: 0.66rem; text-transform: uppercase; font-family: var(--font-mono); }
+.detection-modal__grid strong { color: var(--on-surface); font-size: 0.78rem; }
+.detection-modal__actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+.detection-modal__state { padding: 60px 24px; color: var(--text-secondary); text-align: center; }
+.detection-modal__state--error { color: var(--danger); }
+@media (max-width: 650px) { .detection-modal { padding: 10px; } .detection-modal__grid { grid-template-columns: repeat(2, 1fr); } .detection-modal__header, .detection-modal__body { padding-left: 14px; padding-right: 14px; } }

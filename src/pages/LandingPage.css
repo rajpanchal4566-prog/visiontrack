@@ -1,0 +1,552 @@
+/* Tactical Landing Page (Midnight Obsidian) */
+.landing-page {
+  min-height: 100vh;
+  background: var(--surface);
+  color: var(--on-surface);
+  position: relative;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Background Ambience */
+.landing-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.landing-grid-lines {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.landing-glow,
+.landing-scanline {
+  display: none;
+}
+
+/* Tactical Navigation Bar */
+.landing-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--topbar-height);
+  background: rgba(11, 14, 21, 0.92);
+  border-bottom: 1px solid var(--outline-variant);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-xl);
+  z-index: 100;
+}
+
+.landing-nav__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.landing-nav__logo-text {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--primary);
+}
+
+.landing-nav__menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+@media (max-width: 768px) {
+  .landing-nav__menu {
+    display: none;
+  }
+}
+
+.landing-nav__menu a {
+  font-size: 0.74rem;
+  color: var(--outline);
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  transition: color var(--transition-fast);
+}
+
+.landing-nav__menu a:hover {
+  color: var(--primary);
+}
+
+/* Hero Section */
+.landing-hero {
+  position: relative;
+  z-index: 10;
+  padding: calc(var(--topbar-height) + var(--space-2xl)) var(--space-xl) var(--space-3xl);
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-2xl);
+  align-items: center;
+}
+
+@media (max-width: 1024px) {
+  .landing-hero {
+    grid-template-columns: 1fr;
+    padding-top: calc(var(--topbar-height) + var(--space-lg));
+  }
+}
+
+.landing-hero__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.landing-hero__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  font-size: 0.68rem;
+  color: var(--primary);
+  letter-spacing: 0.06em;
+  width: fit-content;
+}
+
+.landing-hero__title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 640px) {
+  .landing-hero__title {
+    font-size: 1.8rem;
+  }
+}
+
+.landing-hero__desc {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--on-surface-variant);
+}
+
+.landing-hero__ctas {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-top: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.landing-hero__stats {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  flex-wrap: wrap;
+}
+
+.landing-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.landing-stat__val {
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.landing-stat__lbl {
+  font-size: 0.58rem;
+  color: var(--outline);
+  letter-spacing: 0.05em;
+}
+
+.landing-stat__sep {
+  color: var(--outline-variant);
+}
+
+/* Hero Animated Scanner Visual */
+.landing-hero__visual {
+  display: flex;
+  justify-content: center;
+}
+
+.tactical-scanner {
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  position: relative;
+  box-shadow: var(--shadow-md);
+}
+
+.tactical-scanner__top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--outline-variant);
+  margin-bottom: var(--space-sm);
+}
+
+.tactical-scanner__viewport {
+  height: 240px;
+  background: var(--surface-container-low);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Laser sweep hidden */
+.tactical-scanner__beam {
+  display: none;
+}
+
+/* Vehicle Bounding Box */
+.tactical-scanner__bbox {
+  position: absolute;
+  width: 75%;
+  height: 70%;
+  border: 1px dashed rgba(0, 240, 255, 0.45);
+  display: flex;
+  align-items: flex-start;
+  padding: 4px;
+}
+
+.tactical-bbox-reticle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: var(--primary);
+  border-style: solid;
+}
+
+.tactical-bbox-label {
+  font-size: 0.6rem;
+  color: var(--primary);
+  background: rgba(0, 240, 255, 0.15);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* Plate readout */
+.tactical-scanner__plate-box {
+  background: #0b0e15;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 15;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.35);
+  animation: pulse-cyan 3s infinite;
+}
+
+.tactical-scanner__plate-flag {
+  border-right: 1px solid var(--outline-variant);
+  padding-right: 8px;
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.tactical-scanner__meta-pill {
+  position: absolute;
+  bottom: 10px;
+  background: rgba(11, 14, 21, 0.88);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.65rem;
+  z-index: 15;
+}
+
+.tactical-scanner__bottom {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--outline-variant);
+  margin-top: var(--space-sm);
+}
+
+/* Sections */
+.landing-section {
+  position: relative;
+  z-index: 10;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-3xl) var(--space-xl);
+  width: 100%;
+}
+
+.landing-section__header {
+  text-align: center;
+  margin-bottom: var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.landing-section__tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.landing-section__title {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.landing-section__subtitle {
+  font-size: 0.9rem;
+  color: var(--on-surface-variant);
+  max-width: 600px;
+}
+
+/* Working Steps Grid */
+.working-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-md);
+}
+
+.working-step-card {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.working-step-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.working-step-num {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.working-step-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.working-step-desc {
+  font-size: 0.84rem;
+  color: var(--on-surface-variant);
+  line-height: 1.5;
+}
+
+/* Operator Roles Grid */
+.operator-roles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-md);
+}
+
+.operator-role-card {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  transition: all var(--transition-fast);
+}
+
+.operator-role-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+}
+
+.operator-role-avatar {
+  font-size: 2rem;
+  margin-bottom: 4px;
+}
+
+.operator-role-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  width: fit-content;
+  letter-spacing: 0.06em;
+}
+
+.operator-role-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.operator-role-desc {
+  font-size: 0.8rem;
+  color: var(--on-surface-variant);
+  line-height: 1.45;
+  margin-bottom: 6px;
+}
+
+.operator-role-focus {
+  font-size: 0.66rem;
+  display: flex;
+  gap: 6px;
+  border-top: 1px solid var(--outline-variant);
+  padding-top: var(--space-xs);
+  margin-top: auto;
+}
+
+/* Capabilities Matrix */
+.capabilities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-md);
+}
+
+.capability-card {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.capability-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.capability-card__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.capability-card__tag {
+  font-size: 0.62rem;
+  color: var(--outline);
+  letter-spacing: 0.06em;
+}
+
+.capability-card__title {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.capability-card__desc {
+  font-size: 0.82rem;
+  color: var(--on-surface-variant);
+  line-height: 1.5;
+}
+
+/* CTA Box */
+.landing-cta-section {
+  position: relative;
+  z-index: 10;
+  max-width: 1000px;
+  margin: var(--space-2xl) auto;
+  padding: 0 var(--space-xl);
+  width: 100%;
+}
+
+.landing-cta-box {
+  padding: var(--space-2xl);
+  text-align: center;
+  background: radial-gradient(circle at center, #151e2e 0%, #0b0e15 100%);
+}
+
+.landing-cta-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.landing-cta-badge {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.landing-cta-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  max-width: 600px;
+}
+
+.landing-cta-desc {
+  font-size: 0.85rem;
+  color: var(--on-surface-variant);
+  max-width: 540px;
+}
+
+/* Footer */
+.landing-footer {
+  position: relative;
+  z-index: 10;
+  margin-top: auto;
+  padding: var(--space-lg) var(--space-xl);
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface-container-lowest);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--outline);
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.landing-footer__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.landing-footer__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}

@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionTrack — Real-World Plate Dataset Labeler</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --bg-card: #1e293b;
+      --bg-card-hover: #26354a;
+      --border-color: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-green: #22c55e;
+      --accent-green-hover: #16a34a;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-purple: #a855f7;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #38bdf8, #3b82f6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: #fff;
+      font-size: 16px;
+      box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .brand-tag {
+      font-size: 11px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-blue);
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .header-stats {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border-color);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .stat-pill .num {
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stat-pill.verified .num { color: var(--accent-green); }
+    .stat-pill.uncertain .num { color: var(--accent-amber); }
+    .stat-pill.rejected .num { color: var(--accent-red); }
+
+    /* Folder bar */
+    .folder-bar {
+      background: #131d31;
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .folder-bar label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .folder-bar input {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .folder-bar button {
+      background: var(--accent-blue);
+      color: #0f172a;
+      border: none;
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .folder-bar button:hover {
+      background: #7dd3fc;
+    }
+
+    /* Main workspace */
+    .workspace {
+      flex: 1;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 480px;
+      gap: 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* Image Viewer */
+    .image-stage {
+      flex: 1;
+      min-height: 420px;
+      background: #090d16;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 24px;
+    }
+
+    .image-stage img {
+      max-width: 90%;
+      max-height: 380px;
+      object-fit: contain;
+      image-rendering: pixelated;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+
+    .image-tools {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      padding: 6px 12px;
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tool-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+
+    .tool-btn:hover, .tool-btn.active {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .badge-bar {
+      padding: 12px 18px;
+      background: rgba(15, 23, 42, 0.4);
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .badge {
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Verification Panel */
+    .control-panel {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .ocr-suggestion-box {
+      background: rgba(56, 189, 248, 0.05);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .ocr-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .ocr-header span {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent-blue);
+    }
+
+    .ocr-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #fff;
+    }
+
+    .ocr-meta {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 12px;
+    }
+
+    /* Human Input Box */
+    .human-input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .human-input-group label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .plate-input-container {
+      position: relative;
+    }
+
+    .plate-input {
+      width: 100%;
+      background: #090d16;
+      border: 2px solid var(--accent-blue);
+      border-radius: 10px;
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      text-align: center;
+      padding: 14px;
+      text-transform: uppercase;
+      outline: none;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+      transition: border-color 0.15s ease;
+    }
+
+    .plate-input:focus {
+      border-color: #7dd3fc;
+    }
+
+    .format-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .format-hint.valid {
+      color: var(--accent-green);
+    }
+
+    .notes-input {
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-size: 13px;
+      padding: 8px 12px;
+      width: 100%;
+      outline: none;
+    }
+
+    /* Buttons */
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .btn .key {
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      opacity: 0.8;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+
+    .btn-verify {
+      grid-column: 1 / -1;
+      background: var(--accent-green);
+      color: #052e16;
+      font-size: 16px;
+      box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
+    }
+
+    .btn-verify:hover {
+      background: var(--accent-green-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-uncertain {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid var(--accent-amber);
+      color: var(--accent-amber);
+    }
+
+    .btn-uncertain:hover {
+      background: rgba(245, 158, 11, 0.25);
+    }
+
+    .btn-reject {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--accent-red);
+      color: var(--accent-red);
+    }
+
+    .btn-reject:hover {
+      background: rgba(239, 68, 68, 0.25);
+    }
+
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 4px;
+    }
+
+    .btn-nav {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      padding: 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    .btn-nav:hover {
+      color: var(--text-main);
+      background: #1e293b;
+    }
+
+    /* Activity table */
+    .activity-section {
+      max-width: 1600px;
+      margin: 0 auto 32px auto;
+      padding: 0 24px;
+      width: 100%;
+    }
+
+    .table-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    th {
+      background: #131d31;
+      padding: 10px 16px;
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-color);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .status-badge.verified { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+    .status-badge.uncertain { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
+    .status-badge.rejected { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+
+    /* Progress bar */
+    .progress-bar-container {
+      height: 4px;
+      background: #0f172a;
+      width: 100%;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #22c55e);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Progress Bar -->
+  <div class="progress-bar-container">
+    <div class="progress-bar-fill" id="progressFill"></div>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">VT</div>
+      <div>
+        <div class="brand-title">Real-World ANPR Dataset Labeler</div>
+      </div>
+      <div class="brand-tag">Feature 5A &bull; Standalone</div>
+    </div>
+
+    <div class="header-stats">
+      <div class="stat-pill verified">
+        <span>Verified</span>
+        <span class="num" id="statVerified">0</span>
+      </div>
+      <div class="stat-pill uncertain">
+        <span>Uncertain</span>
+        <span class="num" id="statUncertain">0</span>
+      </div>
+      <div class="stat-pill rejected">
+        <span>Rejected</span>
+        <span class="num" id="statRejected">0</span>
+      </div>
+      <div class="stat-pill">
+        <span>Progress</span>
+        <span class="num" id="statProgress">0 / 0</span>
+      </div>
+      <button class="btn-nav" id="btnReport" style="flex:none; padding: 6px 12px;">📊 View Report</button>
+    </div>
+  </header>
+
+  <!-- Input Directory Bar -->
+  <div class="folder-bar">
+    <label for="inputDir">Crops Directory:</label>
+    <input type="text" id="inputDir" placeholder="Path to directory containing plate crops (e.g. D:\Download\ANPR_BENCHMARK\crops)">
+    <button id="btnLoadDir">Load Folder</button>
+  </div>
+
+  <!-- Main Workspace -->
+  <div class="workspace">
+    <!-- Left: Image Stage -->
+    <div class="card">
+      <div class="card-header">
+        <span id="imageTitle">Plate Crop Viewer</span>
+        <span class="badge" id="imageIndexBadge">0 / 0</span>
+      </div>
+
+      <div class="image-stage" id="imageStage">
+        <img id="plateImg" src="" alt="Plate Crop" style="display: none;">
+        <div id="noImageMsg" style="color: var(--text-muted); font-size: 14px;">No images loaded. Enter a directory path above.</div>
+
+        <div class="image-tools">
+          <button class="tool-btn" id="filterNormal">Normal</button>
+          <button class="tool-btn" id="filterContrast">High Contrast</button>
+          <button class="tool-btn" id="filterBright">Brightness +</button>
+          <button class="tool-btn" id="filterInvert">Invert</button>
+          <button class="tool-btn" id="zoomIn">Zoom +</button>
+          <button class="tool-btn" id="zoomOut">Zoom -</button>
+          <button class="tool-btn" id="zoomReset">Reset</button>
+        </div>
+      </div>
+
+      <div class="badge-bar">
+        <div>
+          <span>Size: <span class="badge" id="metaSize">-- × --</span></span>
+          <span style="margin-left: 8px;">Ratio: <span class="badge" id="metaRatio">--</span></span>
+          <span style="margin-left: 8px;">Layout: <span class="badge" id="metaLayout">--</span></span>
+        </div>
+        <div>
+          <span>SHA-256: <span class="badge" id="metaHash">--</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Verification Panel -->
+    <div class="card">
+      <div class="card-header">
+        <span>Human Verification & Ground Truth</span>
+        <span class="badge" id="statusBadge" style="display:none;">VERIFIED</span>
+      </div>
+
+      <div class="control-panel">
+        <!-- OCR Suggestion -->
+        <div class="ocr-suggestion-box">
+          <div class="ocr-header">
+            <span>Neural OCR Suggestion (Read-Only)</span>
+            <span class="badge" id="ocrConfBadge">Confidence: --%</span>
+          </div>
+          <div class="ocr-text" id="ocrSuggestionText">--------</div>
+          <div class="ocr-meta">
+            <span id="ocrStateBadge">State: --</span>
+            <span>&bull;</span>
+            <a href="#" id="btnCopyOcr" style="color: var(--accent-blue); text-decoration: none; font-weight: 600;">Copy to Input (Tab)</a>
+          </div>
+        </div>
+
+        <!-- Human Ground Truth Input -->
+        <div class="human-input-group">
+          <label for="gtInput">
+            <span>Verified Ground-Truth Text:</span>
+            <span style="font-size: 11px; color: var(--accent-green); font-weight: 500;">Only Human Input Is Saved</span>
+          </label>
+          <div class="plate-input-container">
+            <input type="text" id="gtInput" class="plate-input" placeholder="MP09AB1234" maxlength="12" autocomplete="off" spellcheck="false" autofocus>
+          </div>
+          <div class="format-hint" id="formatHint">
+            <span>ℹ️ Standard Indian Plate Format: XX 00 XX 0000</span>
+          </div>
+        </div>
+
+        <!-- Notes / Reason -->
+        <div>
+          <label for="notesInput" style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Operator Notes / Rejection Reason (Optional):</label>
+          <input type="text" id="notesInput" class="notes-input" placeholder="e.g., Screws near '8', two-line plate, partial occlusion">
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-grid">
+          <button class="btn btn-verify" id="btnVerify">
+            <span>Verify & Save Ground Truth</span>
+            <span class="key">[Enter]</span>
+          </button>
+          <button class="btn btn-uncertain" id="btnUncertain">
+            <span>Mark Uncertain</span>
+            <span class="key">[U]</span>
+          </button>
+          <button class="btn btn-reject" id="btnReject">
+            <span>Reject Crop</span>
+            <span class="key">[R / Delete]</span>
+          </button>
+        </div>
+
+        <!-- Navigation Bar -->
+        <div class="nav-bar">
+          <button class="btn-nav" id="btnPrev">&larr; Previous [P]</button>
+          <button class="btn-nav" id="btnUndo">Undo Last Action [Ctrl+Z]</button>
+          <button class="btn-nav" id="btnNext">Skip / Next [N] &rarr;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Activity Section -->
+  <div class="activity-section">
+    <div class="table-card">
+      <div class="card-header">
+        <span>Recent Activity Audit Log</span>
+        <span style="font-size: 12px; color: var(--text-muted);">Live updates to labels.csv</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Filename</th>
+            <th>Ground Truth</th>
+            <th>OCR Suggestion</th>
+            <th>Status</th>
+            <th>Dimensions</th>
+          </tr>
+        </thead>
+        <tbody id="activityTableBody">
+          <tr>
+            <td colspan="6" style="text-align:center; color: var(--text-muted); padding: 24px;">No labeled plates in this session yet.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let currentImage = null;
+    let zoomLevel = 1.0;
+    let activeFilter = 'normal';
+    const recentActivity = [];
+
+    // DOM Elements
+    const inputDirEl = document.getElementById('inputDir');
+    const btnLoadDir = document.getElementById('btnLoadDir');
+    const plateImg = document.getElementById('plateImg');
+    const noImageMsg = document.getElementById('noImageMsg');
+    const imageIndexBadge = document.getElementById('imageIndexBadge');
+    const imageTitle = document.getElementById('imageTitle');
+    const metaSize = document.getElementById('metaSize');
+    const metaRatio = document.getElementById('metaRatio');
+    const metaLayout = document.getElementById('metaLayout');
+    const metaHash = document.getElementById('metaHash');
+    const ocrSuggestionText = document.getElementById('ocrSuggestionText');
+    const ocrConfBadge = document.getElementById('ocrConfBadge');
+    const ocrStateBadge = document.getElementById('ocrStateBadge');
+    const btnCopyOcr = document.getElementById('btnCopyOcr');
+    const gtInput = document.getElementById('gtInput');
+    const formatHint = document.getElementById('formatHint');
+    const notesInput = document.getElementById('notesInput');
+    const btnVerify = document.getElementById('btnVerify');
+    const btnUncertain = document.getElementById('btnUncertain');
+    const btnReject = document.getElementById('btnReject');
+    const btnPrev = document.getElementById('btnPrev');
+    const btnNext = document.getElementById('btnNext');
+    const btnUndo = document.getElementById('btnUndo');
+    const btnReport = document.getElementById('btnReport');
+    const statVerified = document.getElementById('statVerified');
+    const statUncertain = document.getElementById('statUncertain');
+    const statRejected = document.getElementById('statRejected');
+    const statProgress = document.getElementById('statProgress');
+    const progressFill = document.getElementById('progressFill');
+    const activityTableBody = document.getElementById('activityTableBody');
+
+    // Indian Plate Regex validator
+    const INDIAN_PLATE_REGEX = /^[A-Z]{2}[0-9]{1,2}[A-Z]{0,3}[0-9]{4}$/;
+
+    function updateFormatHint(val) {
+      const cleaned = val.replace(/[^A-Z0-9]/g, '');
+      if (INDIAN_PLATE_REGEX.test(cleaned)) {
+        formatHint.className = 'format-hint valid';
+        formatHint.innerHTML = `✓ Valid Indian Plate Format (${cleaned.substring(0, 2)} - ${cleaned.length} chars)`;
+      } else if (cleaned.length >= 8) {
+        formatHint.className = 'format-hint';
+        formatHint.innerHTML = `ℹ️ Custom / Non-standard Plate (${cleaned.length} chars)`;
+      } else {
+        formatHint.className = 'format-hint';
+        formatHint.innerHTML = `ℹ️ Standard Indian Plate Format: XX 00 XX 0000`;
+      }
+    }
+
+    gtInput.addEventListener('input', (e) => {
+      gtInput.value = gtInput.value.toUpperCase();
+      updateFormatHint(gtInput.value);
+    });
+
+    // Image Filters
+    function applyImageFilter() {
+      let filterStr = '';
+      if (activeFilter === 'contrast') filterStr = 'contrast(180%) brightness(110%)';
+      else if (activeFilter === 'bright') filterStr = 'brightness(150%) contrast(120%)';
+      else if (activeFilter === 'invert') filterStr = 'invert(100%) contrast(150%)';
+      else filterStr = 'none';
+
+      plateImg.style.filter = filterStr;
+      plateImg.style.transform = `scale(${zoomLevel})`;
+    }
+
+    document.getElementById('filterNormal').onclick = () => { activeFilter = 'normal'; applyImageFilter(); };
+    document.getElementById('filterContrast').onclick = () => { activeFilter = 'contrast'; applyImageFilter(); };
+    document.getElementById('filterBright').onclick = () => { activeFilter = 'bright'; applyImageFilter(); };
+    document.getElementById('filterInvert').onclick = () => { activeFilter = 'invert'; applyImageFilter(); };
+    document.getElementById('zoomIn').onclick = () => { zoomLevel = Math.min(3.0, zoomLevel + 0.25); applyImageFilter(); };
+    document.getElementById('zoomOut').onclick = () => { zoomLevel = Math.max(0.5, zoomLevel - 0.25); applyImageFilter(); };
+    document.getElementById('zoomReset').onclick = () => { zoomLevel = 1.0; activeFilter = 'normal'; applyImageFilter(); };
+
+    // Fetch Session & Stats
+    async function loadSession() {
+      try {
+        const res = await fetch('/api/session');
+        const data = await res.json();
+        statVerified.textContent = data.verifiedCount;
+        statUncertain.textContent = data.uncertainCount;
+        statRejected.textContent = data.rejectedCount;
+        statProgress.textContent = `${data.totalProcessed} / ${data.totalImages}`;
+        
+        if (data.totalImages > 0) {
+          const pct = ((data.totalProcessed / data.totalImages) * 100).toFixed(1);
+          progressFill.style.width = `${pct}%`;
+        } else {
+          progressFill.style.width = '0%';
+        }
+
+        if (data.inputDir && !inputDirEl.value) {
+          inputDirEl.value = data.inputDir;
+        }
+      } catch (err) {
+        console.error('Failed to load session:', err);
+      }
+    }
+
+    // Load Current Image
+    async function loadCurrentImage() {
+      try {
+        const res = await fetch('/api/image/current');
+        const data = await res.json();
+
+        if (data.done) {
+          plateImg.style.display = 'none';
+          noImageMsg.style.display = 'block';
+          noImageMsg.innerHTML = '🎉 <strong>All images in directory labeled!</strong>';
+          imageTitle.textContent = 'Completed';
+          ocrSuggestionText.textContent = 'DONE';
+          gtInput.value = '';
+          gtInput.disabled = true;
+          return;
+        }
+
+        currentImage = data;
+        plateImg.src = data.imageData;
+        plateImg.style.display = 'block';
+        noImageMsg.style.display = 'none';
+
+        imageTitle.textContent = data.filename;
+        imageIndexBadge.textContent = `${data.index + 1} / ${data.total}`;
+        metaSize.textContent = `${data.width} × ${data.height}`;
+        metaRatio.textContent = `${data.aspectRatio}`;
+        metaLayout.textContent = data.height > 0 && (data.width / data.height < 2.5) ? 'Two-Line' : 'Single-Line';
+        metaHash.textContent = data.hash.substring(0, 10) + '...';
+
+        // OCR Suggestion
+        ocrSuggestionText.textContent = data.ocrSuggestion || '(None)';
+        ocrConfBadge.textContent = `Confidence: ${(data.ocrConfidence * 100).toFixed(1)}%`;
+        const stateMatch = (data.ocrSuggestion || '').match(/^[A-Z]{2}/);
+        ocrStateBadge.textContent = stateMatch ? `State: ${stateMatch[0]}` : 'State: --';
+
+        // Auto-fill input with suggestion for convenience, but require human confirmation
+        gtInput.disabled = false;
+        gtInput.value = data.ocrSuggestion || '';
+        updateFormatHint(gtInput.value);
+        notesInput.value = '';
+        gtInput.focus();
+        gtInput.select();
+
+        // Reset image zoom & filter
+        zoomLevel = 1.0;
+        activeFilter = 'normal';
+        applyImageFilter();
+
+        await loadSession();
+      } catch (err) {
+        console.error('Failed to load image:', err);
+      }
+    }
+
+    // Copy OCR Suggestion to Input
+    btnCopyOcr.onclick = (e) => {
+      e.preventDefault();
+      if (currentImage && currentImage.ocrSuggestion) {
+        gtInput.value = currentImage.ocrSuggestion;
+        updateFormatHint(gtInput.value);
+        gtInput.focus();
+      }
+    };
+
+    // Submit Label Action
+    async function submitLabel(action) {
+      if (!currentImage) return;
+
+      const groundTruth = gtInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const notes = notesInput.value.trim();
+
+      if (action === 'VERIFY' && !groundTruth) {
+        alert('Ground-truth plate text cannot be empty for Verify!');
+        gtInput.focus();
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/label', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action,
+            groundTruth,
+            ocrSuggestion: currentImage.ocrSuggestion,
+            notes,
+            reason: notes,
+          }),
+        });
+        const result = await res.json();
+        if (result.success) {
+          // Add to activity log
+          addActivityRow({
+            timestamp: new Date().toLocaleTimeString(),
+            filename: currentImage.filename,
+            groundTruth: action === 'VERIFY' ? groundTruth : action === 'UNCERTAIN' ? `[?] ${groundTruth || 'Ambiguous'}` : '[REJECTED]',
+            ocr: currentImage.ocrSuggestion,
+            status: action,
+            dims: `${currentImage.width}×${currentImage.height}`,
+          });
+
+          await loadCurrentImage();
+        } else {
+          alert('Error saving label: ' + (result.error || 'Unknown error'));
+        }
+      } catch (err) {
+        console.error('Failed to submit label:', err);
+      }
+    }
+
+    function addActivityRow(row) {
+      if (activityTableBody.children.length === 1 && activityTableBody.children[0].children.length === 1) {
+        activityTableBody.innerHTML = '';
+      }
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${row.timestamp}</td>
+        <td>${row.filename}</td>
+        <td style="color: ${row.status === 'VERIFY' ? 'var(--accent-green)' : 'var(--text-main)'}; font-weight: 700;">${row.groundTruth}</td>
+        <td style="color: var(--text-muted);">${row.ocr || '--'}</td>
+        <td><span class="status-badge ${row.status.toLowerCase()}">${row.status}</span></td>
+        <td>${row.dims}</td>
+      `;
+      activityTableBody.insertBefore(tr, activityTableBody.firstChild);
+      if (activityTableBody.children.length > 10) {
+        activityTableBody.removeChild(activityTableBody.lastChild);
+      }
+    }
+
+    // Action button handlers
+    btnVerify.onclick = () => submitLabel('VERIFY');
+    btnUncertain.onclick = () => submitLabel('UNCERTAIN');
+    btnReject.onclick = () => submitLabel('REJECT');
+
+    // Navigation & Undo
+    btnPrev.onclick = async () => {
+      await fetch('/api/navigate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direction: 'prev' }),
+      });
+      await loadCurrentImage();
+    };
+
+    btnNext.onclick = async () => {
+      await fetch('/api/navigate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direction: 'next' }),
+      });
+      await loadCurrentImage();
+    };
+
+    btnUndo.onclick = async () => {
+      const res = await fetch('/api/undo', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        if (activityTableBody.firstChild) {
+          activityTableBody.removeChild(activityTableBody.firstChild);
+        }
+        await loadCurrentImage();
+      } else {
+        alert(data.error || 'Cannot undo');
+      }
+    };
+
+    // Load Directory
+    btnLoadDir.onclick = async () => {
+      const dir = inputDirEl.value.trim();
+      if (!dir) return;
+      const res = await fetch('/api/set-input', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputDir: dir }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadCurrentImage();
+      } else {
+        alert('Failed to load directory: ' + (data.error || 'Not found'));
+      }
+    };
+
+    // View Report
+    btnReport.onclick = async () => {
+      const res = await fetch('/api/report');
+      const md = await res.text();
+      const reportWindow = window.open('', '_blank');
+      reportWindow.document.write(`
+        <html><head><title>Real-World ANPR Dataset Report</title>
+        <style>body{font-family:sans-serif;background:#0f172a;color:#f8fafc;padding:32px;line-height:1.6;}
+        pre{background:#1e293b;padding:16px;border-radius:8px;font-family:monospace;}
+        table{border-collapse:collapse;width:100%;margin:16px 0;}
+        th,td{border:1px solid #334155;padding:8px 12px;text-align:left;}
+        th{background:#1e293b;}</style></head><body>
+        <pre>${md.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        </body></html>
+      `);
+    };
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      // Don't trigger shortcuts if user is typing in notes input
+      if (e.target === notesInput) return;
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitLabel('VERIFY');
+      } else if (e.key === 'u' || e.key === 'U') {
+        if (e.target !== gtInput) {
+          e.preventDefault();
+          submitLabel('UNCERTAIN');
+        }
+      } else if (e.key === 'Delete' || (e.key === 'r' && e.altKey)) {
+        e.preventDefault();
+        submitLabel('REJECT');
+      } else if (e.key === 'p' && (e.ctrlKey || e.altKey)) {
+        e.preventDefault();
+        btnPrev.click();
+      } else if (e.key === 'n' && (e.ctrlKey || e.altKey)) {
+        e.preventDefault();
+        btnNext.click();
+      } else if (e.key === 'z' && e.ctrlKey) {
+        e.preventDefault();
+        btnUndo.click();
+      } else if (e.key === 'Tab' && e.target === gtInput) {
+        if (currentImage && currentImage.ocrSuggestion) {
+          e.preventDefault();
+          gtInput.value = currentImage.ocrSuggestion;
+          updateFormatHint(gtInput.value);
+        }
+      }
+    });
+
+    // Initial load
+    loadSession();
+    loadCurrentImage();
+  </script>
+</body>
+</html>

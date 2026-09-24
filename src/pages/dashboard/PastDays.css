@@ -1,0 +1,17 @@
+.past-days { display: grid; gap: var(--space-lg); }
+.past-days__header { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-lg); padding: var(--space-lg); border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: linear-gradient(120deg, rgba(0, 240, 255, 0.08), var(--bg-surface)); }
+.past-days__eyebrow { color: var(--primary); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.past-days__header h2 { margin: 5px 0 0; color: var(--text-primary); font-family: var(--font-display); font-size: 1.3rem; }
+.past-days__header p { margin: 5px 0 0; color: var(--text-muted); font-size: 0.8rem; }
+.past-days__date { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 5px 8px; min-width: 250px; color: var(--text-secondary); font-size: 0.75rem; font-weight: 600; }
+.past-days__date svg { grid-row: span 2; color: var(--primary); }
+.past-days__date input { grid-column: 2 / span 2; min-width: 0; padding: 8px 9px; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: var(--radius-sm); font: inherit; cursor: pointer; }
+.past-days__today { grid-column: 2 / span 2; justify-self: start; padding: 3px 0; color: var(--primary); background: transparent; border: 0; font: inherit; font-size: 0.7rem; cursor: pointer; }
+.past-days__today:disabled { color: var(--text-muted); cursor: default; }
+.past-days__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-lg); }
+.past-days__grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); }
+.past-days__traffic, .past-days__map { min-width: 0; }
+.past-days__state { display: flex; min-height: 180px; align-items: center; justify-content: center; gap: 9px; padding: var(--space-lg); color: var(--text-muted); border: 1px dashed var(--border-default); border-radius: var(--radius-lg); text-align: center; }
+.past-days__state--error { color: var(--danger); }
+@media (max-width: 900px) { .past-days__header { align-items: stretch; flex-direction: column; } .past-days__grid { grid-template-columns: 1fr; } }
+@media (max-width: 650px) { .past-days__stats { grid-template-columns: 1fr; } }

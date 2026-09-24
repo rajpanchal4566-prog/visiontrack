@@ -1,0 +1,128 @@
+.stat-card {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  overflow: hidden;
+  transition: all var(--transition-base);
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-glow);
+  box-shadow: var(--shadow-glow);
+}
+
+.stat-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+}
+
+.stat-card__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-card__icon--primary {
+  background: var(--primary-glow);
+  color: var(--primary);
+}
+
+.stat-card__icon--secondary {
+  background: var(--secondary-glow);
+  color: var(--secondary);
+}
+
+.stat-card__icon--success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.stat-card__icon--warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.stat-card__icon--danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.stat-card__icon--info {
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+.stat-card__trend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-full);
+}
+
+.trend--up {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.trend--down {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.trend--neutral {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+}
+
+.stat-card__value {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: var(--space-xs);
+  animation: countUp 0.6s ease forwards;
+}
+
+.stat-card__label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.stat-card__delta {
+  margin-top: 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.stat-card__delta--up { color: var(--success); }
+.stat-card__delta--down { color: var(--danger); }
+.stat-card__delta--neutral { color: var(--text-muted); }
+
+.stat-card__sparkline {
+  height: 48px;
+  margin: 5px -5px -5px;
+  opacity: 0.9;
+}
+
+.stat-card__glow {
+  display: none;
+}
+
+.stat-card--primary:hover { border-color: rgba(59, 130, 246, 0.4); }
+.stat-card--secondary:hover { border-color: rgba(245, 158, 11, 0.4); }
+.stat-card--success:hover { border-color: rgba(16, 185, 129, 0.4); }
+.stat-card--warning:hover { border-color: rgba(245, 158, 11, 0.4); }
+.stat-card--danger:hover { border-color: rgba(239, 68, 68, 0.4); }

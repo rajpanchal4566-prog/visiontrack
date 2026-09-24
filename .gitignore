@@ -1,0 +1,104 @@
+# ==============================================================================
+# VisionTrack — Git Ignore Configuration
+# ==============================================================================
+
+# Dependencies
+node_modules/
+
+# Production build outputs
+dist/
+dist-ssr/
+
+# Environment and secrets (Keep real .env secret, track only .env.example)
+.env
+.env.*
+.env.local
+!.env.example
+
+# SQLite Database and WAL journals (Never commit local database files)
+*.db
+*.db-shm
+*.db-wal
+anpr.db*
+
+# Uploaded media and detection snapshots
+uploads/
+server/uploads/
+!server/uploads/.gitkeep
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Development scratch files, benchmarks, test scripts, and datasets
+scratch/
+scratch_*
+benchmark_*
+ocr_models_*
+ocr_raw_*
+smartcow_*
+all_models_*
+fps8_*
+commercial_*
+test_smartcow_run.cjs
+test_snapshot_crop.cjs
+extract_frame44.cjs
+accuracy_benchmark_*
+feature3b_training_report.md
+*.traineddata
+Screenshot*
+training/dataset/*.csv
+training/dataset/*.png
+training/dataset/*.jpg
+training/dataset/*.zip
+
+# IDE and OS metadata
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+=
+
+# NOTE: The ONNX model files in models/ (*.onnx) are required for inference.
+# They are under 25MB each and MUST remain tracked in Git so Railway/Render
+# can build and run the computer vision pipelines out of the box.
+# Training artifacts — keep local, don't deploy
+training/runs/
+training/pretrained/
+training/dataset/*.csv
+training/scripts/__pycache__/
+*.keras
+*.pyc
+# Benchmark and experiment outputs
+*_benchmark_*.csv
+*_benchmark_*.json
+*_benchmark_*.md
+benchmark_*.csv
+benchmark_*.json
+benchmark_*.md
+
+# Experimental OCR / AI outputs
+ocr_raw_*/
+ocr_models_*/
+all_models_*/
+smartcow_*/
+fps8_*/
+commercial_*/
+
+# Temporary test images
+models/neural_ocr/test_crop.png
+
+# Screenshots
+Screenshot*.png
+Screenshot*.jpg
+Screenshot*.jpeg

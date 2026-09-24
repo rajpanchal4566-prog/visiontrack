@@ -1,0 +1,27 @@
+.flagged-page { display: grid; gap: var(--space-lg); }
+.flagged-page__intro { display: flex; align-items: center; justify-content: space-between; padding: var(--space-lg); border: 1px solid var(--outline-variant); border-left: 4px solid var(--danger); border-radius: var(--radius-md); background: var(--surface-container-low); color: var(--danger); }
+.flagged-page__intro h2 { margin: 0; color: var(--text-primary); font-family: var(--font-display); font-size: 1.2rem; }
+.flagged-page__intro p { margin: 5px 0 0; color: var(--text-muted); font-size: 0.8rem; }
+.flagged-page__tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.flagged-page__tab { padding: 8px 14px; border: 1px solid var(--outline-variant); border-radius: var(--radius-sm); color: var(--on-surface-variant); background: var(--surface-container-low); cursor: pointer; font-size: 0.76rem; font-family: var(--font-mono); transition: all var(--transition-fast); }
+.flagged-page__tab:hover, .flagged-page__tab--active { border-color: var(--danger); color: #f87171; background: rgba(239, 68, 68, 0.1); }
+.flagged-page__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-md); }
+.flagged-card { overflow: hidden; border: 1px solid var(--outline-variant); border-left: 3px solid var(--warning); border-radius: var(--radius-md); background: var(--surface-container-low); cursor: pointer; transition: border-color var(--transition-fast), transform var(--transition-fast); }
+.flagged-card:has(.flagged-card__badge--watchlist) { border-left-color: var(--danger); background: rgba(239, 68, 68, 0.04); }
+.flagged-card:has(.flagged-card__badge--investigation) { border-left-color: var(--primary); }
+.flagged-card:hover { border-color: var(--outline-bright); transform: translateY(-2px); }
+.flagged-card__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: var(--space-md); border-bottom: 1px solid var(--outline-variant); }
+.flagged-card__plate { display: inline-flex; align-items: center; padding: 0.2rem 0.6rem; background: #080d16; border: 1px solid #ef4444; border-radius: var(--radius-sm); color: #ffffff; font-size: 1.15rem; font-weight: 800; letter-spacing: 0.08em; }
+.flagged-card__badge { max-width: 55%; overflow: hidden; padding: 4px 8px; border-radius: var(--radius-sm); color: white; font-size: 0.65rem; font-weight: 700; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; font-family: var(--font-mono); }
+.flagged-card__badge--hardware { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+.flagged-card__badge--investigation { background: rgba(14, 165, 233, 0.2); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.4); }
+.flagged-card__badge--watchlist { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+.flagged-card__body { display: grid; grid-template-columns: 100px 1fr; gap: var(--space-md); padding: var(--space-md); }
+.flagged-card__image { width: 100px; height: 82px; border-radius: var(--radius-sm); background: #080d16; object-fit: cover; border: 1px solid var(--outline-variant); }
+.flagged-card__image--empty { display: grid; place-items: center; color: var(--text-muted); }
+.flagged-card__details { display: grid; align-content: center; gap: 8px; color: var(--on-surface-variant); font-size: 0.72rem; }
+.flagged-card__details > div { display: flex; align-items: center; gap: 7px; }
+.flagged-card__details svg { flex: 0 0 auto; color: var(--primary); }
+.flagged-card__details strong { color: var(--text-muted); }
+.flagged-page__empty { display: flex; min-height: 150px; align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); border: 1px dashed var(--border-default); border-radius: var(--radius-lg); }
+@media (max-width: 600px) { .flagged-page__grid { grid-template-columns: 1fr; } .flagged-card__body { grid-template-columns: 82px 1fr; } .flagged-card__image { width: 82px; } }

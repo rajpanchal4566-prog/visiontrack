@@ -1,0 +1,19 @@
+# Config for Latin-alphabet plates with Indian ANPR compatibility
+
+max_plate_slots: 10
+alphabet: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_'
+pad_char: '_'
+img_height: 64
+img_width: 128
+keep_aspect_ratio: false
+interpolation: linear
+image_color_mode: rgb
+plate_regions: [ 'Albania', 'Andorra', 'Argentina', 'Armenia', 'Australia', 'Austria', 'Azerbaijan', 'Bahrain',
+                 'Belarus', 'Belgium', 'Bosnia and Herzegovina', 'Brazil', 'Bulgaria', 'Cambodia', 'Canada', 'Croatia',
+                 'Cyprus', 'Czech Republic', 'Denmark', 'Estonia', 'Finland', 'France', 'Georgia', 'Germany',
+                 'Gibraltar', 'Greece', 'Guernsey', 'Hungary', 'Iceland', 'Indonesia', 'Ireland', 'Israel', 'Italy',
+                 'Latvia', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Malaysia', 'Malta', 'Mexico', 'Moldova',
+                 'Monaco', 'Montenegro', 'Netherlands', 'New Zealand', 'North Macedonia', 'Norway', 'Poland',
+                 'Portugal', 'Qatar', 'Romania', 'San Marino', 'Serbia', 'Singapore', 'Slovakia', 'Slovenia', 'Spain',
+                 'Sweden', 'Switzerland', 'Thailand', 'Turkey', 'United States', 'Ukraine', 'United Kingdom', 'Vietnam',
+                 'Unknown' ]

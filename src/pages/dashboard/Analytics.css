@@ -1,0 +1,181 @@
+/* Analytics Throughput Engine (Midnight Obsidian) */
+.analytics__grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1.2fr;
+  gap: var(--space-md);
+}
+
+@media (max-width: 1024px) {
+  .analytics__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.analytics__traffic {
+  grid-column: 1;
+}
+
+.analytics__pie {
+  grid-column: 2;
+}
+
+@media (max-width: 1024px) {
+  .analytics__traffic,
+  .analytics__pie {
+    grid-column: 1;
+  }
+}
+
+.analytics__heatmap {
+  grid-column: 1 / -1;
+}
+
+.analytics__frequent {
+  grid-column: 1;
+}
+
+.analytics__zones {
+  grid-column: 2;
+}
+
+@media (max-width: 1024px) {
+  .analytics__frequent,
+  .analytics__zones {
+    grid-column: 1;
+  }
+}
+
+/* Custom Tooltip */
+.analytics-tooltip {
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--on-surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.75);
+}
+
+.analytics-tooltip__label {
+  font-weight: 700;
+  margin-bottom: 2px;
+  color: var(--primary);
+}
+
+/* Congestion List */
+.congestion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.congestion-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.congestion-item:hover {
+  border-color: var(--outline-bright);
+  background: var(--surface-container-low);
+}
+
+.congestion-item__info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.congestion-item__name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.congestion-item__zone {
+  font-size: 0.68rem;
+  color: var(--outline);
+  font-family: var(--font-mono);
+}
+
+.congestion-item__stats {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.congestion-item__count {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+/* Heatmap Grid */
+.heatmap {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.heatmap__y-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 20px;
+}
+
+.heatmap__label {
+  font-size: 0.62rem;
+  color: var(--outline);
+  font-family: var(--font-mono);
+  line-height: 18px;
+  text-align: right;
+  min-width: 30px;
+}
+
+.heatmap__grid {
+  flex: 1;
+  overflow-x: auto;
+}
+
+.heatmap__x-labels {
+  display: flex;
+  gap: 0;
+  margin-bottom: 4px;
+}
+
+.heatmap__x-labels .heatmap__label {
+  width: calc(100% / 8);
+  text-align: center;
+}
+
+.heatmap__cells {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.heatmap__row {
+  display: flex;
+  gap: 3px;
+}
+
+.heatmap__cell {
+  flex: 1;
+  height: 18px;
+  border-radius: 1px;
+  min-width: 12px;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.heatmap__cell:hover {
+  transform: scale(1.15);
+  z-index: 5;
+}

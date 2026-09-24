@@ -1,0 +1,39 @@
+{
+  "name": "anpr-dashboard",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "vite",
+    "server": "node server/index.js",
+    "start": "node server/index.js",
+    "demo:travel": "node server/scripts/seedTravelDemo.js",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "leaflet": "^1.9.4",
+    "leaflet.heat": "^0.2.0",
+    "lucide-react": "^1.43.0",
+    "multer": "^2.3.0",
+    "node-cron": "^4.6.0",
+    "onnxruntime-node": "^1.30.0",
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.18.3",
+    "recharts": "^3.10.1",
+    "sharp": "^0.35.4",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "tesseract.js": "^7.0.0",
+    "uuid": "^14.0.2"
+  }
+}

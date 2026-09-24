@@ -1,0 +1,73 @@
+.chart-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.chart-card:hover {
+  border-color: var(--border-glow);
+}
+
+.chart-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-lg) var(--space-lg) 0;
+}
+
+.chart-card__title {
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.chart-card__subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.chart-card__action {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.chart-card__body {
+  padding: var(--space-md) var(--space-lg) var(--space-lg);
+}
+
+/* Toggle buttons for chart controls */
+.chart-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.chart-toggle__btn {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+}
+
+.chart-toggle__btn:hover {
+  color: var(--text-secondary);
+}
+
+.chart-toggle__btn--active {
+  background: var(--primary-glow);
+  color: var(--primary);
+}

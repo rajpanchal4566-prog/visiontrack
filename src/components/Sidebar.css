@@ -1,0 +1,228 @@
+/* Tactical Navigation Rail (Midnight Obsidian) */
+.tactical-sidebar {
+  width: var(--sidebar-width);
+  height: 100vh;
+  background: var(--surface-container-low);
+  border-right: 1px solid var(--outline-variant);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  transition: width var(--transition-base);
+  user-select: none;
+}
+
+.tactical-sidebar--collapsed {
+  width: var(--sidebar-collapsed);
+}
+
+/* Header & Node Core Identity */
+.tactical-sidebar__header {
+  height: var(--topbar-height);
+  padding: 0 var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface-container-lowest);
+}
+
+.tactical-sidebar__node-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  overflow: hidden;
+}
+
+.tactical-sidebar__node-icon {
+  width: 28px;
+  height: 28px;
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.tactical-sidebar__node-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.tactical-sidebar__node-title {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--on-surface);
+  white-space: nowrap;
+}
+
+.tactical-sidebar__node-sub {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--tertiary-fixed);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.tactical-sidebar__collapse-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-container-low);
+  color: var(--outline);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.tactical-sidebar__collapse-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Navigation Links */
+.tactical-sidebar__nav {
+  flex: 1;
+  padding: var(--space-sm) var(--space-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.tactical-nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0.5rem var(--space-md);
+  color: var(--on-surface-variant);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  transition: all var(--transition-fast);
+  text-decoration: none;
+}
+
+.tactical-nav-link:hover {
+  color: var(--on-surface);
+  background: var(--surface-container);
+}
+
+.tactical-nav-link--active {
+  color: var(--primary);
+  background: var(--surface-container);
+  border-left-color: var(--primary);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.tactical-nav-icon {
+  flex-shrink: 0;
+}
+
+.tactical-nav-link--active .tactical-nav-icon {
+  color: var(--primary);
+}
+
+.tactical-nav-label {
+  white-space: nowrap;
+  flex: 1;
+}
+
+.tactical-nav-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--secondary);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-sm);
+}
+
+/* Footer & Heartbeat */
+.tactical-sidebar__footer {
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface-container-lowest);
+}
+
+.tactical-heartbeat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tactical-heartbeat__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tactical-heartbeat__text {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--tertiary-fixed);
+  letter-spacing: 0.04em;
+}
+
+.tactical-heartbeat__uptime {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--outline);
+}
+
+.tactical-ping-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tertiary-fixed);
+  display: inline-block;
+}
+
+.tactical-ping-dot--center {
+  margin: 0 auto;
+}
+
+/* Mobile Toggle */
+.sidebar-mobile-toggle {
+  display: none;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--on-primary);
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+}
+
+@media (max-width: 768px) {
+  .sidebar-mobile-toggle {
+    display: flex;
+  }
+  .tactical-sidebar {
+    transform: translateX(-100%);
+  }
+  .tactical-sidebar--open {
+    transform: translateX(0);
+  }
+}

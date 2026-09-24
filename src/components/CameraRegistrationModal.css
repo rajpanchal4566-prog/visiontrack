@@ -1,0 +1,444 @@
+/* Camera Registration Modal Styles — Midnight Obsidian Theme */
+
+.cam-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 11, 18, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.cam-modal-card {
+  background: var(--surface-container-lowest, #0b0e15);
+  border: 1px solid var(--outline-bright, #243047);
+  border-radius: 6px;
+  max-width: 860px;
+  width: 100%;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.8), 0 0 25px rgba(0, 240, 255, 0.08);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Header */
+.cam-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.25rem 1.5rem;
+  background: var(--surface-container-low, #10131a);
+  border-bottom: 1px solid var(--outline-variant, #1e293b);
+}
+
+.cam-modal-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--primary, #00f0ff);
+  margin-bottom: 4px;
+}
+
+.cam-modal-title {
+  font-size: 1.25rem;
+  color: var(--text-on-surface, #e2e8f0);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.cam-modal-close-btn {
+  background: transparent;
+  border: 1px solid var(--outline-variant, #1e293b);
+  border-radius: 4px;
+  color: var(--text-outline, #94a3b8);
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cam-modal-close-btn:hover {
+  border-color: var(--error, #ff3366);
+  color: var(--error, #ff3366);
+  background: rgba(255, 51, 102, 0.1);
+}
+
+/* Body */
+.cam-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.cam-modal-alert {
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cam-modal-alert--error {
+  background: rgba(255, 51, 102, 0.12);
+  border: 1px solid rgba(255, 51, 102, 0.4);
+  color: #ff8099;
+}
+
+/* Sections */
+.cam-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.cam-modal-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.8);
+  padding-bottom: 6px;
+}
+
+.cam-modal-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* Form Groups */
+.cam-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cam-form-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--text-outline, #94a3b8);
+  text-transform: uppercase;
+}
+
+.cam-form-input,
+.cam-form-select {
+  background: var(--surface-container-lowest, #0b0e15);
+  border: 1px solid var(--outline-bright, #243047);
+  border-radius: 4px;
+  padding: 0.55rem 0.75rem;
+  color: #f1f5f9;
+  font-size: 0.82rem;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.cam-form-input:focus,
+.cam-form-select:focus {
+  outline: none;
+  border-color: var(--primary, #00f0ff);
+  box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.3);
+}
+
+.cam-form-input::placeholder {
+  color: #475569;
+}
+
+/* Grids */
+.cam-modal-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.85rem;
+}
+
+.cam-modal-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.85rem;
+}
+
+.cam-modal-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
+}
+
+/* Coordinates & Geolocation Card */
+.cam-coords-card {
+  background: var(--surface-container-low, #10131a);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 4px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cam-coords-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cam-coords-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--primary, #00f0ff);
+}
+
+.cam-geo-btn {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  background: rgba(0, 240, 255, 0.05);
+  color: var(--primary, #00f0ff);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cam-geo-btn:hover:not(:disabled) {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: var(--primary, #00f0ff);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+
+.cam-geo-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+}
+
+.cam-geo-status--loading {
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  color: var(--primary, #00f0ff);
+}
+
+.cam-geo-status--success {
+  background: rgba(0, 230, 118, 0.08);
+  border: 1px solid rgba(0, 230, 118, 0.3);
+  color: var(--tertiary, #00e676);
+}
+
+.cam-geo-status--error {
+  background: rgba(255, 51, 102, 0.08);
+  border: 1px solid rgba(255, 51, 102, 0.3);
+  color: var(--error, #ff3366);
+}
+
+.cam-coords-footer {
+  margin-top: 2px;
+}
+
+/* Presets */
+.cam-presets-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cam-presets-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cam-preset-pill {
+  background: var(--surface-container-lowest, #0b0e15);
+  border: 1px solid var(--outline-variant, #1e293b);
+  border-radius: 3px;
+  color: var(--text-outline, #94a3b8);
+  font-size: 0.72rem;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cam-preset-pill:hover {
+  border-color: var(--primary, #00f0ff);
+  color: #f1f5f9;
+}
+
+.cam-preset-pill--active {
+  background: rgba(0, 240, 255, 0.12);
+  border-color: var(--primary, #00f0ff);
+  color: var(--primary, #00f0ff);
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.15);
+}
+
+/* Stream Test Card */
+.cam-stream-test-card {
+  background: var(--surface-container-low, #10131a);
+  border: 1px solid var(--outline-variant, #1e293b);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.cam-stream-test-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cam-resolved-url {
+  flex: 1;
+  font-size: 0.74rem;
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 4px 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cam-test-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.cam-test-banner {
+  padding: 0.6rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.cam-test-banner--success {
+  background: rgba(0, 230, 118, 0.08);
+  border: 1px solid rgba(0, 230, 118, 0.3);
+  color: var(--tertiary, #00e676);
+}
+
+.cam-test-banner--error {
+  background: rgba(255, 51, 102, 0.08);
+  border: 1px solid rgba(255, 51, 102, 0.3);
+  color: var(--error, #ff3366);
+}
+
+.cam-test-success-content,
+.cam-test-error-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cam-test-thumb {
+  height: 38px;
+  border-radius: 3px;
+  border: 1px solid var(--tertiary, #00e676);
+}
+
+/* Violation Toggles */
+.cam-toggles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.85rem;
+}
+
+.cam-toggle-card {
+  background: var(--surface-container-low, #10131a);
+  border: 1px solid var(--outline-variant, #1e293b);
+  border-radius: 4px;
+  padding: 0.75rem 0.85rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cam-toggle-card:hover {
+  border-color: rgba(0, 240, 255, 0.3);
+}
+
+.cam-toggle-card input[type="checkbox"] {
+  margin-top: 3px;
+  accent-color: var(--primary, #00f0ff);
+  cursor: pointer;
+}
+
+.cam-toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cam-toggle-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #f1f5f9;
+}
+
+/* Footer */
+.cam-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: var(--surface-container-low, #10131a);
+  border-top: 1px solid var(--outline-variant, #1e293b);
+  gap: 1rem;
+}
+
+.cam-modal-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+@media (max-width: 800px) {
+  .cam-modal-grid-3,
+  .cam-modal-grid-4,
+  .cam-toggles-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cam-modal-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .cam-modal-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cam-modal-footer-right {
+    justify-content: flex-end;
+  }
+}
