@@ -1,13 +1,13 @@
 # ==============================================================================
 # VisionTrack — Production Dockerfile
-# Provides Node.js 20 runtime, explicit FFmpeg installation, model assets,
+# Provides Node.js 22 runtime, explicit FFmpeg installation, model assets,
 # and compiled React frontend for deployment on Railway / Render.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
 # Stage 1: Build Frontend Assets
 # ------------------------------------------------------------------------------
-FROM node:20-bookworm-slim AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -29,7 +29,7 @@ RUN npm run build
 # ------------------------------------------------------------------------------
 # Stage 2: Production Runtime Environment
 # ------------------------------------------------------------------------------
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 
 WORKDIR /app
 

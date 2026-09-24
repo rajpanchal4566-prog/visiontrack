@@ -33,7 +33,7 @@ Railway and Render run applications in **ephemeral container environments**. Eve
 ### ⚠️ B. FFmpeg Availability
 VisionTrack's RTSP ingestion (`server/services/rtspIngestion.js`) and video processing (`server/services/frameStream.js`) depend on the native `ffmpeg` binary.
 - Standard Node.js buildpacks (Heroku/Render native) **do not** include FFmpeg by default.
-- VisionTrack provides an official **`Dockerfile`** based on `node:20-bookworm-slim` that installs `ffmpeg` via Debian `apt-get`.
+- VisionTrack provides an official **`Dockerfile`** based on `node:22-bookworm-slim` that installs `ffmpeg` via Debian `apt-get`.
 - **Always select "Dockerfile" deployment** on Railway or Render to ensure FFmpeg is available in the container `$PATH`.
 
 ### ⚠️ C. Mandatory `JWT_SECRET`
