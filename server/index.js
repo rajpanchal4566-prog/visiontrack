@@ -162,7 +162,7 @@ const PORT = process.env.PORT || 3001;
 initializeDatabase();
 seedDatabase();
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log('');
   console.log('╔══════════════════════════════════════════════╗');
   console.log('║   🧠 VisionTrack Traffic Intelligence       ║');
