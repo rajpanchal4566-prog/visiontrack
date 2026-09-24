@@ -27,6 +27,7 @@
     "multer": "^2.3.0",
     "node-cron": "^4.6.0",
     "onnxruntime-node": "^1.30.0",
+    "pdfkit": "^0.20.2",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.18.3",
     "recharts": "^3.10.1",
