@@ -63,6 +63,45 @@ function isNeuralOcrAvailable(modelPath = null) {
 }
 
 /**
+ * Preprocess an image crop buffer into an ONNX tensor matching model input [1, 64, 128, 3].
+ *
+ * @param {Buffer} cropBuffer
+ * @param {number} [sharpenSigma=0]
+ * @returns {Promise<ort.Tensor>}
+ */
+async function createPlateTensor(cropBuffer, sharpenSigma = 0) {
+  let pipeline = sharp(cropBuffer).flatten({ background: { r: 255, g: 255, b: 255 } });
+  if (sharpenSigma > 0) {
+    pipeline = pipeline.sharpen({ sigma: sharpenSigma });
+  }
+  const extendedPng = await pipeline
+    .extend({ top: 4, bottom: 4, left: 12, right: 12, background: { r: 255, g: 255, b: 255 } })
+    .png()
+    .toBuffer();
+
+  const { data: rawBuffer, info } = await sharp(extendedPng)
+    .resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: 'fill' })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const safeBuffer = info.channels === 4
+    ? (() => {
+        const rgb = Buffer.allocUnsafe(INPUT_WIDTH * INPUT_HEIGHT * 3);
+        for (let px = 0; px < INPUT_WIDTH * INPUT_HEIGHT; px++) {
+          rgb[px * 3] = rawBuffer[px * 4];
+          rgb[px * 3 + 1] = rawBuffer[px * 4 + 1];
+          rgb[px * 3 + 2] = rawBuffer[px * 4 + 2];
+        }
+        return rgb;
+      })()
+    : rawBuffer;
+
+  const uint8Array = new Uint8Array(safeBuffer.buffer, safeBuffer.byteOffset, INPUT_WIDTH * INPUT_HEIGHT * 3);
+  return new ort.Tensor('uint8', uint8Array, [1, INPUT_HEIGHT, INPUT_WIDTH, 3]);
+}
+
+/**
  * Recognize plate characters directly from an image crop buffer.
  *
  * @param {Buffer} cropBuffer - Raw image buffer (JPEG/PNG) of the cropped plate.
@@ -74,6 +113,7 @@ function isNeuralOcrAvailable(modelPath = null) {
  *   confidence: number,
  *   confidencePercent: number,
  *   charConfidences: number[],
+ *   candidates: string[],
  *   latencyMs: number,
  *   status: string
  * }>}
@@ -89,6 +129,7 @@ async function recognizePlateNeural(cropBuffer, modelPath = null) {
       confidence: 0,
       confidencePercent: 0,
       charConfidences: [],
+      candidates: [],
       latencyMs: 0,
       status: 'invalid_input',
     };
@@ -104,75 +145,37 @@ async function recognizePlateNeural(cropBuffer, modelPath = null) {
       confidence: 0,
       confidencePercent: 0,
       charConfidences: [],
+      candidates: [],
       latencyMs: 0,
       status: 'model_unavailable',
     };
   }
 
   try {
-    // 1. Preprocess: resize to 128x64 RGB uint8 raw buffer.
-    //
-    // CRITICAL: In sharp 0.35.4, chaining extend() + resize() in a single pipeline
-    // silently ignores the resize — the output stays at the extended dimensions.
-    // Fix: split into two separate sharp calls.
-    //   Step A: flatten (alpha → white) + extend padding → intermediate PNG
-    //   Step B: resize 128×64 (fill) → raw RGB bytes
-    //
-    const extendedPng = await sharp(cropBuffer)
-      .flatten({ background: { r: 255, g: 255, b: 255 } })
-      .extend({ top: 4, bottom: 4, left: 12, right: 12, background: { r: 255, g: 255, b: 255 } })
-      .png()
-      .toBuffer();
-
-    const { data: rawBuffer, info } = await sharp(extendedPng)
-      .resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: 'fill' })
-      .removeAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-
-    if (info.width !== INPUT_WIDTH || info.height !== INPUT_HEIGHT) {
-      throw new Error(`Unexpected crop dimensions after resize: ${info.width}x${info.height}, expected ${INPUT_WIDTH}x${INPUT_HEIGHT}`);
-    }
-
-    const expectedSize = INPUT_WIDTH * INPUT_HEIGHT * info.channels;
-    // If RGBA (channels=4), strip alpha by re-extracting RGB
-    const safeBuffer = info.channels === 4
-      ? (() => {
-          const rgb = Buffer.allocUnsafe(INPUT_WIDTH * INPUT_HEIGHT * 3);
-          for (let px = 0; px < INPUT_WIDTH * INPUT_HEIGHT; px++) {
-            rgb[px * 3] = rawBuffer[px * 4];
-            rgb[px * 3 + 1] = rawBuffer[px * 4 + 1];
-            rgb[px * 3 + 2] = rawBuffer[px * 4 + 2];
-          }
-          return rgb;
-        })()
-      : rawBuffer;
-    const uint8Array = new Uint8Array(safeBuffer.buffer, safeBuffer.byteOffset, INPUT_WIDTH * INPUT_HEIGHT * 3);
-    const tensor = new ort.Tensor('uint8', uint8Array, [1, INPUT_HEIGHT, INPUT_WIDTH, 3]);
+    const tensor = await createPlateTensor(cropBuffer, 0);
     const results = await session.run({ input: tensor });
 
-    // 3. Decode output: tensor of shape [1, 10, 37]
+    // Decode output: tensor of shape [1, 10, 37]
     const plateOutput = results.plate.data;
     let rawPlate = '';
     let confSum = 0;
     let charCount = 0;
     const charConfidences = [];
+    const slotChoices = [];
 
     for (let slot = 0; slot < MAX_SLOTS; slot++) {
-      let maxProb = -Infinity;
-      let maxIdx = -1;
+      const probs = [];
       const offset = slot * 37;
       for (let c = 0; c < 37; c++) {
-        const prob = plateOutput[offset + c];
-        if (prob > maxProb) {
-          maxProb = prob;
-          maxIdx = c;
-        }
+        probs.push({ char: ALPHABET[c], prob: plateOutput[offset + c] });
       }
-      const char = ALPHABET[maxIdx];
-      if (char !== PAD_CHAR) {
-        rawPlate += char;
-        const conf = Math.max(0, Math.min(1, maxProb));
+      probs.sort((a, b) => b.prob - a.prob);
+      slotChoices.push(probs);
+
+      const top = probs[0];
+      if (top.char !== PAD_CHAR) {
+        rawPlate += top.char;
+        const conf = Math.max(0, Math.min(1, top.prob));
         confSum += conf;
         charCount++;
         charConfidences.push(Number(conf.toFixed(4)));
@@ -190,9 +193,23 @@ async function recognizePlateNeural(cropBuffer, modelPath = null) {
         confidence: 0,
         confidencePercent: 0,
         charConfidences: [],
+        candidates: [],
         latencyMs,
         status: 'empty',
       };
+    }
+
+    // Generate beam candidate strings for slots with high runner-up competition
+    const candidates = [rawPlate];
+    let strIdx = 0;
+    for (let slot = 0; slot < MAX_SLOTS; slot++) {
+      const top1 = slotChoices[slot][0];
+      const top2 = slotChoices[slot][1];
+      if (top1.char === PAD_CHAR) continue;
+      const curIdx = strIdx++;
+      if (top2.char !== PAD_CHAR && top2.prob >= 0.14) {
+        candidates.push(rawPlate.slice(0, curIdx) + top2.char + rawPlate.slice(curIdx + 1));
+      }
     }
 
     return {
@@ -202,6 +219,7 @@ async function recognizePlateNeural(cropBuffer, modelPath = null) {
       confidence: avgConfidence,
       confidencePercent: Number((avgConfidence * 100).toFixed(1)),
       charConfidences,
+      candidates: [...new Set(candidates)],
       latencyMs,
       status: 'success',
     };
@@ -215,6 +233,7 @@ async function recognizePlateNeural(cropBuffer, modelPath = null) {
       confidence: 0,
       confidencePercent: 0,
       charConfidences: [],
+      candidates: [],
       latencyMs,
       status: 'inference_failed',
     };
@@ -242,5 +261,7 @@ module.exports = {
   recognizePlateNeural,
   isNeuralOcrAvailable,
   shutdownNeuralOcr,
+  createPlateTensor,
+  getSession,
   DEFAULT_MODEL_PATH,
 };

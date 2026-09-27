@@ -60,7 +60,7 @@ class RealtimeAnprPipeline {
     this.cameraFrameSeqs = new Map(); // trackerKey -> sequence number
     this.sampleFps = Number(options.sampleFps || Number(process.env.FRAME_SAMPLE_FPS || process.env.ANPR_SAMPLE_FPS || 16));
     this.maxMissedTimeSec = Number(options.maxMissedTimeSec ?? 1.8);
-    this.maxMissedFrames = Number(options.maxMissedFrames ?? Math.max(15, Math.round(this.sampleFps * this.maxMissedTimeSec)));
+    this.maxMissedFrames = Number(options.maxMissedFrames ?? Math.max(4, Math.round(this.sampleFps * this.maxMissedTimeSec)));
     this.iouThreshold = Number(options.iouThreshold ?? 0.20);
     this.deferOcr = Boolean(options.deferOcr); // Deferred OCR mode: score frames cheaply, OCR at finalization
   }
@@ -74,7 +74,7 @@ class RealtimeAnprPipeline {
       this.trackers.set(cameraId, new VehicleTracker({
         sampleFps: fps,
         maxMissedTimeSec: this.maxMissedTimeSec,
-        maxMissedFrames: Math.max(15, Math.round(fps * this.maxMissedTimeSec)),
+        maxMissedFrames: Math.max(4, Math.round(fps * this.maxMissedTimeSec)),
         iouThreshold: this.iouThreshold,
         maxCentroidDistanceRatio: 0.75,
         uploadsDir: UPLOADS_DIR,
@@ -118,7 +118,7 @@ class RealtimeAnprPipeline {
             ocrResult: fin.bestReading,
             violationResult: fin.violationResult || { violations: [], flagged: false },
             sourceType,
-            frameBuffer: fin.bestReading.frameBuffer,
+            frameBuffer: fin.bestReading.vehicleCropBuffer || fin.bestReading.frameBuffer,
             trackId: fin.trackId,
             framesTracked: fin.framesTracked,
           });
@@ -160,16 +160,20 @@ class RealtimeAnprPipeline {
     const frameSeq = (this.cameraFrameSeqs.get(trackerKey) || 0) + 1;
     this.cameraFrameSeqs.set(trackerKey, frameSeq);
 
-    // Stage 1: Frame Pre-Check & Dual-Scale Setup
+    // Stage 1: Frame Pre-Check & Native Resolution Alignment
     const tResize0 = Date.now();
     let origMeta = null;
     try {
       origMeta = await sharp(frameBuffer).metadata();
     } catch {
-      origMeta = { width: 640, height: 480 };
+      origMeta = { width: 1280, height: 720 };
     }
-    const activeFrame = await resizeFrameForYolo(frameBuffer, 640);
-    const activeMeta = (origMeta.width <= 640 && origMeta.height <= 640)
+    // Use native frameBuffer directly for maximum detection resolution and 1:1 pixel coordinate alignment.
+    // Only downsample if oversized (>1920) to prevent memory spikes.
+    const activeFrame = (origMeta.width > 1920 || origMeta.height > 1080)
+      ? await resizeFrameForYolo(frameBuffer, 1280)
+      : frameBuffer;
+    const activeMeta = (activeFrame === frameBuffer)
       ? origMeta
       : await sharp(activeFrame).metadata();
     timings.resizeMs = Date.now() - tResize0;
@@ -249,8 +253,8 @@ class RealtimeAnprPipeline {
           ocrText: singleTrack.getBestReading()?.rawPlate || singlePlate,
           bbox: singleTrack.bbox,
         } : null,
-        violations: singleTrack?.cachedViolations || [],
-        flagged: Boolean(singleTrack?.cachedViolations?.length > 0),
+        violations: singleTrack?.cachedViolations?.violations || [],
+        flagged: Boolean(singleTrack?.cachedViolations?.violations?.length > 0),
         speed: singleTrack?.estimatedSpeed ?? null,
         speedLimit: Number(camera?.speed_limit_kmh) || 50,
         processingTimeMs: elapsedMs,
@@ -266,8 +270,8 @@ class RealtimeAnprPipeline {
         vehicle_type: singleTrack?.vehicleType || 'unknown',
         plate: singlePlate,
         speed: singleTrack?.estimatedSpeed ?? null,
-        violations: singleTrack?.cachedViolations || [],
-        flagged: Boolean(singleTrack?.cachedViolations?.length > 0),
+        violations: singleTrack?.cachedViolations?.violations || [],
+        flagged: Boolean(singleTrack?.cachedViolations?.violations?.length > 0),
         processing_time_ms: elapsedMs,
         overlay,
         finalizedTracks: [],
@@ -282,10 +286,27 @@ class RealtimeAnprPipeline {
     });
     timings.vehicleDetMs = Date.now() - tVeh0;
 
-    const hasVehicle = vehicleResult.vehicle_detected;
+    let hasVehicle = vehicleResult.vehicle_detected;
     let detectedVehicleType = vehicleResult.detected_vehicle_type || 'unknown';
     const vehicleBbox = vehicleResult.vehicle_bbox || null;
     const occupants = vehicleResult.occupants || [];
+
+    // Stage 3: Fast License Plate Detection (YOLOv8 Plate Detector)
+    // Run if vehicle was detected OR if active tracks are currently tracking
+    const tPlate0 = Date.now();
+    let plateDet = null;
+    if (hasVehicle || tracker.activeTracks.size > 0) {
+      try {
+        plateDet = await detectPlate(activeFrame);
+      } catch (err) {
+        console.warn(`[SmartANPR] Plate detector error: ${err.message}`);
+      }
+    }
+
+    const detectedPlates = plateDet?.success ? (plateDet.detections || []) : [];
+    if (detectedPlates.length > 0) {
+      hasVehicle = true;
+    }
 
     // Frame HUD Overlay Base
     const overlay = {
@@ -332,7 +353,7 @@ class RealtimeAnprPipeline {
             ocrResult: fin.bestReading,
             violationResult: { violations: [], flagged: false },
             sourceType,
-            frameBuffer: fin.bestReading.frameBuffer || activeFrame,
+            frameBuffer: fin.bestReading.vehicleCropBuffer || fin.bestReading.frameBuffer || activeFrame,
             trackId: fin.trackId,
             framesTracked: fin.framesTracked,
           });
@@ -376,137 +397,150 @@ class RealtimeAnprPipeline {
       };
     }
 
-    // Stage 3 & 4: Multi-Vehicle License Plate Detection + Smart OCR
-    const tPlate0 = Date.now();
-    const activeTracker = tracker;
-    const meta = vehicleResult.image || { width: 640, height: 480 };
-    const rawVehicles = (vehicleResult.vehicle_detections && vehicleResult.vehicle_detections.length > 0)
-      ? vehicleResult.vehicle_detections
-      : (vehicleBbox ? [{ vehicle_type: detectedVehicleType, vehicle_bbox: vehicleBbox }] : []);
+    // Step 1: Deduplicate / Class-Agnostic NMS on raw vehicle detections (IoU >= 0.70)
+    let rawVehicles = (vehicleResult.vehicle_detections && vehicleResult.vehicle_detections.length > 0)
+      ? [...vehicleResult.vehicle_detections]
+      : (vehicleBbox ? [{ vehicle_type: detectedVehicleType, vehicle_bbox: vehicleBbox, vehicle_confidence: vehicleResult.vehicle_confidence || 0.8 }] : []);
 
-    let plateDet = null;
-    try {
-      plateDet = await detectPlate(activeFrame);
-    } catch (err) {
-      console.warn(`[SmartANPR] Plate detector error: ${err.message}`);
-    }
-
-    const detectedPlates = plateDet?.success ? (plateDet.detections || []) : [];
-
-    // Associate each detected plate with its enclosing vehicle
-    // FIX (Bug 4): Use 10% tolerance buffer so slightly-clipped plates at 640px scale
-    // still match the correct vehicle. Fallback uses nearest vehicle centroid (not IoU >= 0.05
-    // which was too loose and could match wrong adjacent vehicle).
-    const vehiclePlateMap = new Map(); // vehicleIndex -> plateDetObj
-
-    for (const pb of detectedPlates) {
-      const pcx = pb.x + pb.width / 2;
-      const pcy = pb.y + pb.height / 2;
-      let bestVIdx = -1;
-      let bestScore = -Infinity;
-
-      for (let vIdx = 0; vIdx < rawVehicles.length; vIdx++) {
-        const vb = rawVehicles[vIdx].vehicle_bbox || rawVehicles[vIdx].bbox;
+    if (rawVehicles.length > 1) {
+      const deduped = [];
+      const sortedVehicles = [...rawVehicles].sort((a, b) => (b.vehicle_confidence || b.confidence || 0) - (a.vehicle_confidence || a.confidence || 0));
+      for (const v of sortedVehicles) {
+        const vb = v.vehicle_bbox || v.bbox;
         if (!vb) continue;
-
-        // 10% tolerance on plate dimensions to handle slightly-clipped plate centroids
-        const tolX = Math.max(5, pb.width * 0.10);
-        const tolY = Math.max(5, pb.height * 0.10);
-        const isInside = (
-          pcx >= vb.x - tolX && pcx <= vb.x + vb.width + tolX &&
-          pcy >= vb.y - tolY && pcy <= vb.y + vb.height + tolY
-        );
-        if (isInside) {
-          const area = vb.width * vb.height;
-          const score = 10000 - Math.min(area, 9000) + pb.confidence * 1000;
-          if (score > bestScore) {
-            bestScore = score;
-            bestVIdx = vIdx;
-          }
-        }
+        const isDuplicate = deduped.some(existing => {
+          const eb = existing.vehicle_bbox || existing.bbox;
+          if (!eb) return false;
+          return bboxIoU(vb, eb) >= 0.70;
+        });
+        if (!isDuplicate) deduped.push(v);
       }
-
-      // FIX (Bug 4): Fallback — nearest vehicle centroid within reasonable distance.
-      // Replaces old IoU >= 0.05 which could match plates to wrong adjacent vehicles.
-      if (bestVIdx === -1) {
-        let minDist = Infinity;
-        for (let vIdx = 0; vIdx < rawVehicles.length; vIdx++) {
-          const vb = rawVehicles[vIdx].vehicle_bbox || rawVehicles[vIdx].bbox;
-          if (!vb) continue;
-          const vcx = vb.x + vb.width / 2;
-          const vcy = vb.y + vb.height / 2;
-          const dist = Math.hypot(pcx - vcx, pcy - vcy);
-          // Only accept if plate centroid is within 80% of the vehicle diagonal
-          const maxAcceptableDist = Math.hypot(vb.width, vb.height) * 0.8;
-          if (dist < minDist && dist < maxAcceptableDist) {
-            minDist = dist;
-            bestVIdx = vIdx;
-          }
-        }
-      }
-
-      if (bestVIdx !== -1) {
-        const existing = vehiclePlateMap.get(bestVIdx);
-        if (!existing || pb.confidence > existing.confidence) {
-          vehiclePlateMap.set(bestVIdx, pb);
-        }
-      }
+      rawVehicles = deduped;
     }
 
-    // Now, for EACH vehicle, run OCR or retrieve confirmed plate
-    const vehicleReadings = new Map(); // vehicleIndex -> ocrResult
+    // Step 2 (PROBLEM 1): Track vehicles across frames using Spatial Overlap + Velocity Prediction
+    const tTrack0 = Date.now();
+    const vehicleDetections = rawVehicles.map(rv => ({
+      bbox: rv.vehicle_bbox || rv.bbox,
+      vehicleType: rv.vehicle_type || rv.type || detectedVehicleType || 'car',
+      confidence: rv.vehicle_confidence ?? rv.confidence ?? 0.8,
+    }));
+
+    const trackingUpdate = await tracker.update(vehicleDetections, {
+      frameIndex: frameSeq,
+      timestamp: overlay.timestamp,
+      frameBuffer: activeFrame,
+    });
+    timings.trackingMs = Date.now() - tTrack0;
+
+    // Step 4 (PROBLEM 2): Strict Geometric Plate Ownership
+    // A plate strictly belongs to whichever active vehicle box in this frame CONTAINS its coordinates.
+    // If a plate's coordinates don't fall inside any vehicle box, it does not get assigned to anything.
+    // Never assign one plate to multiple vehicles in the same frame.
+
     let primaryOcrResult = null;
     let primaryPlate = null;
 
-    for (let vIdx = 0; vIdx < rawVehicles.length; vIdx++) {
-      const rv = rawVehicles[vIdx];
-      const vb = rv.vehicle_bbox || rv.bbox;
-      const pb = vehiclePlateMap.get(vIdx) || null;
+    if (detectedPlates.length > 0 && trackingUpdate.activeTracks.length > 0) {
 
-      // Check if this vehicle already belongs to a confirmed track
-      const existingMatch = vb ? activeTracker.findBestMatch(vb) : null;
-      if (existingMatch && existingMatch.shouldSkipOcr && existingMatch.confirmedPlate) {
-        const best = existingMatch.getBestReading();
-        const reading = {
-          plate: existingMatch.confirmedPlate,
-          rawPlate: best?.rawPlate || existingMatch.confirmedPlate,
-          rawText: best?.rawPlate || existingMatch.confirmedPlate,
-          confidence: existingMatch.lastEvaluation?.confidence || 0.95,
-          ocrConfidence: (existingMatch.lastEvaluation?.topCandidate?.avgOcrConf || 0.95) * 100,
-          detectorConfidence: (existingMatch?.lastEvaluation?.topCandidate?.avgDetConf || 0.85) * 100,
-          plateRegion: pb || existingMatch.bbox,
-          skippedOcr: true,
-        };
-        vehicleReadings.set(vIdx, reading);
-        if (!primaryOcrResult || reading.confidence > (primaryOcrResult.confidence || 0)) {
-          primaryOcrResult = reading;
-          primaryPlate = reading.plate;
+      const assignedPlates = new Set();
+      const assignedTracks = new Set();
+
+      for (let pIdx = 0; pIdx < detectedPlates.length; pIdx++) {
+        const pb = detectedPlates[pIdx];
+        const pcx = pb.x + pb.width / 2;
+        const pcy = pb.y + pb.height / 2;
+
+        let bestTrack = null;
+        let smallestArea = Infinity;
+
+        // PROBLEM 2: Plate ownership strictly against vehicle detections active in THIS frame (no ghost/missed tracks)
+        for (const det of vehicleDetections) {
+          if (!det.trackId || assignedTracks.has(det.trackId)) continue;
+          const vb = det.bbox;
+          if (!vb) continue;
+          // Strict geometric containment: plate center MUST be inside vehicle box
+          const isContained = (pcx >= vb.x && pcx <= vb.x + vb.width && pcy >= vb.y && pcy <= vb.y + vb.height);
+          if (isContained) {
+            const area = vb.width * vb.height;
+            if (area < smallestArea) {
+              smallestArea = area;
+              bestTrack = tracker.activeTracks.get(det.trackId);
+            }
+          }
         }
-        continue;
-      }
 
-      // If vehicle has a detected plate, run Model 3 neural OCR with dual-scale high-res crop
-      if (pb) {
-        try {
-          const highResPb = (scaleX !== 1 || scaleY !== 1) ? {
-            x: Math.round(pb.x * scaleX),
-            y: Math.round(pb.y * scaleY),
-            width: Math.round(pb.width * scaleX),
-            height: Math.round(pb.height * scaleY),
-            confidence: pb.confidence,
-          } : pb;
+        if (bestTrack && !assignedPlates.has(pIdx)) {
+          assignedPlates.add(pIdx);
+          assignedTracks.add(bestTrack.id);
 
-          const prep = await preparePlateCrop(frameBuffer, highResPb, origMeta);
-          if (prep && prep.ocrCrop) {
-            const enhancedResult = await recognizePlateNeuralEnhanced(prep.ocrCrop, INDIA_MODEL_PATH);
+          try {
+            const highResPb = (scaleX !== 1 || scaleY !== 1) ? {
+              x: Math.round(pb.x * scaleX),
+              y: Math.round(pb.y * scaleY),
+              width: Math.round(pb.width * scaleX),
+              height: Math.round(pb.height * scaleY),
+              confidence: pb.confidence,
+            } : pb;
+
+            const cropLeft = Math.max(0, Math.min(origMeta.width - 1, highResPb.x));
+            const cropTop = Math.max(0, Math.min(origMeta.height - 1, highResPb.y));
+            const cropW = Math.max(10, Math.min(origMeta.width - cropLeft, highResPb.width));
+            const cropH = Math.max(6, Math.min(origMeta.height - cropTop, highResPb.height));
+
+            const tightCrop = await sharp(frameBuffer)
+              .extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH })
+              .png()
+              .toBuffer();
+
+            // Create a vehicle crop from the full frame for the evidence snapshot
+            // (the plate crop is too small for humans to identify the vehicle)
+            let vehicleCropBuffer = null;
+            try {
+              const vb = bestTrack.bbox;
+              if (vb && vb.width >= 20 && vb.height >= 20) {
+                // Scale vehicle bbox to original frame coords if needed
+                const vbX = Math.round((scaleX !== 1 ? vb.x * scaleX : vb.x));
+                const vbY = Math.round((scaleY !== 1 ? vb.y * scaleY : vb.y));
+                const vbW = Math.round((scaleX !== 1 ? vb.width * scaleX : vb.width));
+                const vbH = Math.round((scaleY !== 1 ? vb.height * scaleY : vb.height));
+                // Add 15% padding around the vehicle for context
+                const padX = Math.round(vbW * 0.15);
+                const padY = Math.round(vbH * 0.15);
+                const vLeft = Math.max(0, vbX - padX);
+                const vTop = Math.max(0, vbY - padY);
+                const vRight = Math.min(origMeta.width, vbX + vbW + padX);
+                const vBottom = Math.min(origMeta.height, vbY + vbH + padY);
+                const vCropW = Math.max(40, vRight - vLeft);
+                const vCropH = Math.max(40, vBottom - vTop);
+                vehicleCropBuffer = await sharp(frameBuffer)
+                  .extract({ left: vLeft, top: vTop, width: vCropW, height: vCropH })
+                  .jpeg({ quality: 88 })
+                  .toBuffer();
+              }
+            } catch (_vCropErr) {
+              // Non-fatal: fall back to plate crop for snapshot
+            }
+
+            const enhancedResult = await recognizePlateNeuralEnhanced(tightCrop, INDIA_MODEL_PATH);
             if (enhancedResult && (enhancedResult.plate || enhancedResult.rawText)) {
               const rawText = enhancedResult.rawText || enhancedResult.plate || '';
               const norm = normalizePlateText(enhancedResult.plate || rawText);
               const conf = enhancedResult.confidencePercent || (enhancedResult.confidence * 100) || 0;
               const hasValidFormat = norm.plate && (isIndianPlateFormat(norm.plate) || isStandardPlateFormat(norm.plate));
-              const effectivePlate = norm.plate || (conf >= 25 ? rawText.toUpperCase().replace(/[^A-Z0-9]/g, '') : null);
 
-              if (effectivePlate && (hasValidFormat || conf >= 25)) {
+              // Reject known non-registration text patterns (category labels on Indian plates)
+              const stripped = rawText.toUpperCase().replace(/[^A-Z0-9]/g, '');
+              const NON_PLATE_PATTERNS = /^(NONTRANSPORT|TRANSPORT|INDIA|GOVERNMENT|PRIVATE|COMMERCIAL|DIPLOMAT|TEMPORARY|TOURIST|DEFENCE|ARMY|NAVY|AIRFORCE|POLICE|AMBULANCE|MINISTRY|PARKING)$/;
+              const isNonPlateText = NON_PLATE_PATTERNS.test(stripped);
+
+              // Non-format-validated plates must contain at least 2 digits and be 5-12 chars
+              const digitCount = (stripped.match(/\d/g) || []).length;
+              const isPlausiblePlate = !isNonPlateText && stripped.length >= 5 && stripped.length <= 12 && digitCount >= 2;
+
+              const effectivePlate = norm.plate || (conf >= 25 && isPlausiblePlate ? stripped : null);
+
+              if (effectivePlate && (hasValidFormat || (conf >= 25 && isPlausiblePlate))) {
                 const reading = {
                   plate: effectivePlate,
                   rawPlate: rawText,
@@ -515,14 +549,17 @@ class RealtimeAnprPipeline {
                   ocrConfidence: conf,
                   detectorConfidence: pb.confidence * 100,
                   plateRegion: pb,
-                  frameBuffer: prep.ocrCrop,
+                  frameBuffer: tightCrop,
+                  vehicleCropBuffer: vehicleCropBuffer || null,
                   skippedOcr: false,
                 };
-                vehicleReadings.set(vIdx, reading);
 
-                if (existingMatch && typeof existingMatch.recordOcrAttempt === 'function') {
-                  existingMatch.recordOcrAttempt(reading);
-                }
+                bestTrack.addReading(reading, {
+                  frameIndex: frameSeq,
+                  timestamp: overlay.timestamp,
+                  frameBuffer: tightCrop,
+                  vehicleCropBuffer: vehicleCropBuffer || null,
+                });
 
                 if (!primaryOcrResult || reading.confidence > (primaryOcrResult.confidence || 0)) {
                   primaryOcrResult = reading;
@@ -530,28 +567,10 @@ class RealtimeAnprPipeline {
                 }
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[SmartANPR] Vehicle ${vIdx} OCR error: ${err.message}`);
-        }
-      }
-    }
-
-    // Fallback: If no vehicle plate was detected by multi-vehicle logic, run processPlateImage on high-res frameBuffer
-    if (!primaryPlate && detectedPlates.length === 0 && rawVehicles.length <= 1) {
-      try {
-        const fallbackRes = await processPlateImage(frameBuffer);
-        if (fallbackRes?.plate) {
-          const rawConf = Number(fallbackRes.finalConfidence || fallbackRes.confidence || 0);
-          const normConf = rawConf > 1 ? rawConf / 100 : rawConf;
-          if (normConf >= 0.25) {
-            primaryPlate = fallbackRes.plate;
-            primaryOcrResult = fallbackRes;
-            vehicleReadings.set(0, fallbackRes);
+          } catch (err) {
+            console.warn(`[SmartANPR] Plate OCR error: ${err.message}`);
           }
         }
-      } catch (err) {
-        console.warn(`[SmartANPR] Fallback plate OCR error: ${err.message}`);
       }
     }
 
@@ -569,7 +588,7 @@ class RealtimeAnprPipeline {
 
     // Stage 5: Multi-Violation Detection (Helmet, Seatbelt, Speeding)
     const tViol0 = Date.now();
-    const existingTrackMatch = vehicleBbox ? activeTracker.findBestMatch(vehicleBbox) : null;
+    const existingTrackMatch = vehicleBbox ? tracker.findBestMatch(vehicleBbox) : null;
     const violationResult = await detectViolations({
       imageBuffer: activeFrame,
       vehicle: {
@@ -591,55 +610,6 @@ class RealtimeAnprPipeline {
     overlay.violations = violationResult.violations || [];
     overlay.flagged = violationResult.flagged || false;
     overlay.speed = violationResult.speed;
-
-    // Stage 6: Multi-Frame Vehicle Tracking & Multi-Plate Association (VehicleTracker)
-    const tTrack0 = Date.now();
-    const vehicleDetections = [];
-
-    if (rawVehicles.length > 0) {
-      for (let i = 0; i < rawVehicles.length; i++) {
-        const rv = rawVehicles[i];
-        const vBbox = rv.vehicle_bbox || rv.bbox;
-        if (!vBbox) continue;
-        const reading = vehicleReadings.get(i) || null;
-
-        vehicleDetections.push({
-          bbox: vBbox,
-          vehicleType: rv.vehicle_type || rv.type || detectedVehicleType || 'vehicle',
-          confidence: rv.vehicle_confidence ?? rv.confidence ?? 0.8,
-          plate: reading?.plate || null,
-          rawPlate: reading?.rawPlate || reading?.plate || null,
-          ocrText: reading?.rawText || reading?.plate || null,
-          ocrConfidence: reading?.ocrConfidence ?? (reading?.confidence ? reading.confidence * 100 : null),
-          plateConfidence: reading?.detectorConfidence || null,
-          speed: violationResult.speed,
-          plateRegion: reading?.plateRegion || null,
-          frameBuffer: reading?.frameBuffer || null,
-        });
-      }
-    } else if (primaryBbox) {
-      const reading = vehicleReadings.get(0) || primaryOcrResult;
-      vehicleDetections.push({
-        bbox: primaryBbox,
-        vehicleType: detectedVehicleType || 'vehicle',
-        confidence: vehicleResult.vehicle_confidence || 0.8,
-        plate: reading?.plate || null,
-        rawPlate: reading?.rawPlate || reading?.plate || null,
-        ocrText: reading?.rawText || reading?.plate || null,
-        ocrConfidence: reading?.ocrConfidence ?? (reading?.confidence ? reading.confidence * 100 : null),
-        plateConfidence: reading?.detectorConfidence || null,
-        speed: violationResult.speed,
-        plateRegion: reading?.plateRegion || null,
-        frameBuffer: reading?.frameBuffer || null,
-      });
-    }
-
-    const trackingUpdate = await tracker.update(vehicleDetections, {
-      frameIndex: frameSeq,
-      timestamp: overlay.timestamp,
-      frameBuffer: activeFrame,
-    });
-    timings.trackingMs = Date.now() - tTrack0;
 
     // FIX (Bug 5): Map active tracks to Live HUD Overlay WITH per-track plate identity.
     // Each vehicle carries its OWN confirmedPlate, confirmationState, and plateBbox so
@@ -679,7 +649,7 @@ class RealtimeAnprPipeline {
           ocrResult: finalized.bestReading,
           violationResult,
           sourceType,
-          frameBuffer: finalized.bestReading.frameBuffer || activeFrame,
+          frameBuffer: finalized.bestReading.vehicleCropBuffer || finalized.bestReading.frameBuffer || activeFrame,
           trackId: finalized.trackId,
           framesTracked: finalized.framesTracked,
         });
@@ -843,7 +813,26 @@ class RealtimeAnprPipeline {
       if (!imagePath && data.frameBuffer) {
         const fileName = `snap_${detId}_${Date.now()}.jpg`;
         const filePath = path.join(UPLOADS_DIR, fileName);
-        await fs.promises.writeFile(filePath, data.frameBuffer);
+        // Upscale small plate crops for human readability
+        let snapshotBuffer = data.frameBuffer;
+        try {
+          const snapMeta = await sharp(snapshotBuffer).metadata();
+          if (snapMeta && snapMeta.width && snapMeta.width < 300) {
+            const scale = Math.min(4, Math.max(2, Math.ceil(300 / snapMeta.width)));
+            snapshotBuffer = await sharp(snapshotBuffer)
+              .resize({
+                width: snapMeta.width * scale,
+                height: snapMeta.height * scale,
+                kernel: sharp.kernel.lanczos3,
+              })
+              .sharpen({ sigma: 1.0, m1: 1.5, m2: 0.7 })
+              .jpeg({ quality: 92 })
+              .toBuffer();
+          }
+        } catch (_upscaleErr) {
+          // Fall back to original buffer if upscale fails
+        }
+        await fs.promises.writeFile(filePath, snapshotBuffer);
         imagePath = `/uploads/detections/${fileName}`;
       }
 

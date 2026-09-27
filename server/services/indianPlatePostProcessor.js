@@ -9,6 +9,7 @@ const sharp = require('sharp');
 const { recognizePlateNeural } = require('./neuralPlateOcr');
 
 const INDIA_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'license-plate-ocr-india-finetuned.onnx');
+const BASE_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'license-plate-ocr.onnx');
 const {
   isIndianPlateFormat,
   isStandardPlateFormat,
@@ -16,34 +17,28 @@ const {
   normalizePlateText,
   cleanOcrText,
   correctIndianPlate,
+  STATE_MAX_RTO,
   LETTER_TO_DIGIT,
   DIGIT_TO_LETTER,
 } = require('./plateNormalizer');
 
-const INDIAN_STATE_CODES = new Set([
-  'AN', 'AP', 'AR', 'AS', 'BR', 'CH', 'CG', 'DD', 'DL', 'DN', 'GA', 'GJ',
-  'HP', 'HR', 'JH', 'JK', 'KA', 'KL', 'LA', 'LD', 'MH', 'ML', 'MN', 'MP',
-  'MZ', 'NL', 'OD', 'OR', 'PB', 'PY', 'RJ', 'SK', 'TN', 'TR', 'TS', 'UA',
-  'UK', 'UP', 'WB',
-]);
+const ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_';
+const MAX_SLOTS = 10;
+const PAD_CHAR = '_';
 
 function scoreStructuralFit(text) {
-  if (!text || text.length < 8 || text.length > 11) return 0;
+  if (!text || text.length < 7 || text.length > 11) return 0;
   let score = 0;
   if (/^[A-Z]{2}/.test(text)) score += 25;
-  if (/^[A-Z]{2}\d{2}/.test(text)) score += 30;
-  if (/^[A-Z]{2}\d{2}[A-Z]{1,3}/.test(text)) score += 25;
-  if (/\d{1,4}$/.test(text)) score += 20;
+  if (/^[A-Z]{2}\d{1,2}/.test(text)) score += 30;
+  if (/^[A-Z]{2}\d{1,2}[A-Z]{1,3}/.test(text)) score += 25;
+  if (/\d{4}$/.test(text)) score += 25;
+  else if (/\d{1,3}$/.test(text)) score += 15;
   return score;
 }
 
 /**
  * Apply deterministic Indian MoRTH positional syntax decoding.
- * Positions in standard Indian format (XX 00 XX 0000):
- *   1-2: Letters A-Z (State code)
- *   3-4: Digits 0-9 (RTO code)
- *   5-6: Letters A-Z (Series)
- *   7-10: Digits 0-9 (Number)
  *
  * @param {string} rawPlate - Raw plate string from OCR
  * @param {number} [confidence=0] - OCR confidence score
@@ -71,10 +66,67 @@ function applyIndianPositionalDecoding(rawPlate, confidence = 0) {
 }
 
 /**
- * Recognize plate characters with two-line preprocessor and positional post-processor.
+ * Helper to decode ONNX output logits into raw plate, confidence, and beam alternatives.
+ */
+function decodeSessionLogits(outputData) {
+  let rawPlate = '';
+  let confSum = 0;
+  let charCount = 0;
+  const charConfidences = [];
+  const slotChoices = [];
+
+  for (let slot = 0; slot < MAX_SLOTS; slot++) {
+    const probs = [];
+    const offset = slot * 37;
+    for (let c = 0; c < 37; c++) {
+      probs.push({ char: ALPHABET[c], prob: outputData[offset + c] });
+    }
+    probs.sort((a, b) => b.prob - a.prob);
+    slotChoices.push(probs);
+
+    const top = probs[0];
+    if (top.char !== PAD_CHAR) {
+      rawPlate += top.char;
+      const conf = Math.max(0, Math.min(1, top.prob));
+      confSum += conf;
+      charCount++;
+      charConfidences.push(Number(conf.toFixed(4)));
+    }
+  }
+
+  const avgConfidence = charCount > 0 ? Number((confSum / charCount).toFixed(4)) : 0;
+  const candidates = [rawPlate];
+
+  let strIdx = 0;
+  for (let slot = 0; slot < MAX_SLOTS; slot++) {
+    const top1 = slotChoices[slot][0];
+    const top2 = slotChoices[slot][1];
+    if (top1.char === PAD_CHAR) continue;
+    const curIdx = strIdx++;
+    if (top2.char !== PAD_CHAR && top2.prob >= 0.14) {
+      candidates.push(rawPlate.slice(0, curIdx) + top2.char + rawPlate.slice(curIdx + 1));
+    }
+  }
+
+  // Trailing duplicate reduction (e.g. KL01AU5855 -> KL01AU585, KL01CC500 -> KL01CC50)
+  if (rawPlate.length >= 8 && rawPlate[rawPlate.length - 1] === rawPlate[rawPlate.length - 2] && /\d{2}$/.test(rawPlate)) {
+    candidates.push(rawPlate.slice(0, -1));
+  }
+
+  return {
+    rawPlate,
+    confidence: avgConfidence,
+    charConfidences,
+    candidates: [...new Set(candidates)],
+  };
+}
+
+/**
+ * Recognize plate characters with dual-model ensemble, beam candidate ranking,
+ * strict adaptive TTA, and guarded two-line splitting.
  *
  * @param {Buffer} cropBuffer - Raw image buffer of the plate crop
- * @param {string} [modelPath=null] - Optional path to ONNX model (defaults to India fine-tuned)
+ * @param {string} [modelPath=null] - Optional path to ONNX model
  * @returns {Promise<{
  *   success: boolean,
  *   plate: string|null,
@@ -104,42 +156,145 @@ async function recognizePlateNeuralEnhanced(cropBuffer, modelPath = null) {
     };
   }
 
-  let metadata;
+  const { createPlateTensor, getSession } = require('./neuralPlateOcr');
+
+  // Step 1: Initialize ONNX sessions for dual-model ensemble
+  const [sIndia, sBase] = await Promise.all([
+    getSession(targetModel),
+    getSession(BASE_MODEL_PATH),
+  ]);
+
+  if (!sIndia && !sBase) {
+    return {
+      success: false,
+      plate: null,
+      rawText: '',
+      confidence: 0,
+      confidencePercent: 0,
+      charConfidences: [],
+      latencyMs: 0,
+      status: 'model_unavailable',
+    };
+  }
+
+  // Step 2: Preprocess crop buffer to ONNX tensor ONCE
+  let tensor;
   try {
-    metadata = await sharp(cropBuffer).metadata();
-  } catch (err) {
-    // If sharp fails to read metadata, fall back directly to standard neural OCR
+    tensor = await createPlateTensor(cropBuffer, 0);
+  } catch {
+    // If sharp fails to preprocess, fall back to standard single model
     return await recognizePlateNeural(cropBuffer, targetModel);
   }
 
-  const width = metadata.width || 0;
-  const height = metadata.height || 0;
+  // Step 3: Run dual-model inference in parallel
+  const sessionRuns = [];
+  if (sIndia) sessionRuns.push(sIndia.run({ input: tensor }));
+  if (sBase && sBase !== sIndia) sessionRuns.push(sBase.run({ input: tensor }));
+
+  const sessionResults = await Promise.all(sessionRuns);
+  const rIndia = sIndia ? decodeSessionLogits(sessionResults[0].plate.data) : null;
+  const rBase = (sBase && sessionResults.length > 1) ? decodeSessionLogits(sessionResults[1].plate.data) : null;
+
+  // Step 4: Aggregate beam candidates from all models
+  const allCandidates = [];
+  if (rIndia) {
+    for (const c of rIndia.candidates) {
+      allCandidates.push({ text: c, conf: rIndia.confidence, isBase: c === rIndia.rawPlate, model: 'india' });
+    }
+  }
+  if (rBase) {
+    for (const c of rBase.candidates) {
+      allCandidates.push({ text: c, conf: rBase.conf || rBase.confidence, isBase: c === rBase.rawPlate, model: 'base' });
+    }
+  }
+
+  let bestPlate = '';
+  let bestRawText = rIndia?.rawPlate || rBase?.rawPlate || '';
+  let bestScore = -Infinity;
+  let bestCharConfidences = rIndia?.charConfidences || rBase?.charConfidences || [];
+  let bestConf = rIndia?.confidence || rBase?.confidence || 0;
+
+  for (const cand of allCandidates) {
+    const norm = normalizePlateText(cand.text);
+    const p = norm.plate || cand.text;
+    let score = scorePlateCandidate(p) + scoreStructuralFit(p);
+
+    // Add confidence weight
+    score += cand.conf * 20;
+
+    // Agreement bonus: if both models agree on the plate string
+    if (rIndia && rBase && rIndia.rawPlate === rBase.rawPlate && p === rIndia.rawPlate) {
+      score += 35;
+    }
+
+    // Natural reading bonus
+    if (cand.isBase) score += 3;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPlate = p;
+      bestRawText = cand.text;
+      bestConf = cand.conf;
+      if (cand.isBase && cand.model === 'india' && rIndia) {
+        bestCharConfidences = rIndia.charConfidences;
+      } else if (cand.isBase && cand.model === 'base' && rBase) {
+        bestCharConfidences = rBase.charConfidences;
+      }
+    }
+  }
+
+  // Step 5: Strict Adaptive TTA — if winning plate does NOT match Indian format, run mild sharpen
+  if (!isIndianPlateFormat(bestPlate)) {
+    try {
+      const tensorTta = await createPlateTensor(cropBuffer, 0.8);
+      const ttaRuns = [];
+      if (sIndia) ttaRuns.push(sIndia.run({ input: tensorTta }));
+      if (sBase && sBase !== sIndia) ttaRuns.push(sBase.run({ input: tensorTta }));
+
+      const ttaResults = await Promise.all(ttaRuns);
+      const rIndiaTta = sIndia ? decodeSessionLogits(ttaResults[0].plate.data) : null;
+      const rBaseTta = (sBase && ttaResults.length > 1) ? decodeSessionLogits(ttaResults[1].plate.data) : null;
+
+      const ttaCandidates = [
+        ...(rIndiaTta ? rIndiaTta.candidates.map(c => ({ text: c, conf: rIndiaTta.confidence, isBase: c === rIndiaTta.rawPlate })) : []),
+        ...(rBaseTta ? rBaseTta.candidates.map(c => ({ text: c, conf: rBaseTta.confidence, isBase: c === rBaseTta.rawPlate })) : []),
+      ];
+
+      for (const cand of ttaCandidates) {
+        const norm = normalizePlateText(cand.text);
+        const p = norm.plate || cand.text;
+        let score = scorePlateCandidate(p) + scoreStructuralFit(p) + (cand.conf * 20) - 1.5;
+        if (cand.isBase) score += 3;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestPlate = p;
+          bestRawText = cand.text;
+          bestConf = cand.conf;
+        }
+      }
+    } catch {
+      // Ignore TTA failure
+    }
+  }
+
+  // Step 6: Guarded two-line splitting
+  // Only attempt two-line splitting if aspect ratio < 2.2 AND single-crop candidate is NOT a valid Indian plate format
+  let isTwoLineSplit = false;
+  let metadata;
+  try {
+    metadata = await sharp(cropBuffer).metadata();
+  } catch {
+    metadata = null;
+  }
+
+  const width = metadata?.width || 0;
+  const height = metadata?.height || 0;
   const aspectRatio = height > 0 ? width / height : 999;
 
-  // Step 1: Run standard CCT-XS on the original crop
-  const singleResult = await recognizePlateNeural(cropBuffer, targetModel);
-  const singleRaw = singleResult.plate || '';
-  const singlePos = applyIndianPositionalDecoding(singleRaw, singleResult.confidence);
-  const singleCandidate = singlePos.plate || singleRaw;
-  const singleNorm = normalizePlateText(singleCandidate);
-  const singleFinal = singleNorm.plate || singleCandidate;
-  const singleScore = scorePlateCandidate(singleFinal) + scoreStructuralFit(singleFinal);
-
-  // Step 2: If aspect ratio < 2.2, test two-line splitting
-  let bestResult = {
-    ...singleResult,
-    plate: singleFinal,
-    rawText: singleRaw,
-    positionalCorrected: singlePos.corrected,
-    isTwoLineSplit: false,
-  };
-  let bestScore = singleScore;
-
-  if (aspectRatio < 2.2 && width >= 40 && height >= 30) {
+  if (!isIndianPlateFormat(bestPlate) && aspectRatio < 2.2 && width >= 40 && height >= 30) {
     try {
-      // Top half: top 0% to 55%
       const topH = Math.max(1, Math.round(height * 0.55));
-      // Bottom half: top 45% to 100%
       const botY = Math.round(height * 0.45);
       const botH = Math.max(1, height - botY);
 
@@ -157,10 +312,7 @@ async function recognizePlateNeuralEnhanced(cropBuffer, modelPath = null) {
       const botText = cleanOcrText(botRes.plate || '');
 
       if (topText.length >= 2 && botText.length >= 2) {
-        // Form combined candidates:
-        // Candidate 1: Direct concatenation top + bot
         const combined1 = `${topText}${botText}`;
-        // Candidate 2: If top ends with same char that bot starts with (e.g. series overlap)
         let combined2 = null;
         if (topText.length > 2 && botText.length > 2 && topText.slice(-1) === botText.slice(0, 1)) {
           combined2 = `${topText}${botText.slice(1)}`;
@@ -169,38 +321,41 @@ async function recognizePlateNeuralEnhanced(cropBuffer, modelPath = null) {
         const candidatesToTest = [combined1, combined2].filter(Boolean);
 
         for (const cand of candidatesToTest) {
-          const pos = applyIndianPositionalDecoding(cand, (topRes.confidence + botRes.confidence) / 2);
-          const candText = pos.plate || cand;
-          const norm = normalizePlateText(candText);
-          const finalPlate = norm.plate || candText;
+          if (cand.length > 11) continue; // Reject split hallucinations
+          const norm = normalizePlateText(cand);
+          const finalPlate = norm.plate || cand;
           const score = scorePlateCandidate(finalPlate) + scoreStructuralFit(finalPlate);
 
-          // Only accept split if it matches Indian format or scores significantly higher
-          if ((isIndianPlateFormat(finalPlate) || isStandardPlateFormat(finalPlate)) && score > bestScore) {
+          if (isIndianPlateFormat(finalPlate) && score > bestScore) {
             bestScore = score;
-            const avgConf = (topRes.confidence + botRes.confidence) / 2;
-            bestResult = {
-              success: true,
-              plate: finalPlate,
-              rawText: cand,
-              confidence: avgConf,
-              confidencePercent: Number((avgConf * 100).toFixed(1)),
-              charConfidences: [...(topRes.charConfidences || []), ...(botRes.charConfidences || [])],
-              latencyMs: Number((performance.now() - startTime).toFixed(2)),
-              status: 'success',
-              isTwoLineSplit: true,
-              positionalCorrected: pos.corrected,
-            };
+            bestPlate = finalPlate;
+            bestRawText = cand;
+            bestConf = (topRes.confidence + botRes.confidence) / 2;
+            bestCharConfidences = [...(topRes.charConfidences || []), ...(botRes.charConfidences || [])];
+            isTwoLineSplit = true;
           }
         }
       }
     } catch {
-      // If two-line splitting fails, safely preserve singleResult
+      // Ignore two-line split failure
     }
   }
 
-  bestResult.latencyMs = Number((performance.now() - startTime).toFixed(2));
-  return bestResult;
+  const latencyMs = Number((performance.now() - startTime).toFixed(2));
+  const confPercent = Number((bestConf * 100).toFixed(1));
+
+  return {
+    success: Boolean(bestPlate),
+    plate: bestPlate || null,
+    rawText: bestRawText,
+    confidence: bestConf,
+    confidencePercent: confPercent,
+    charConfidences: bestCharConfidences,
+    latencyMs,
+    status: bestPlate ? 'success' : 'empty',
+    isTwoLineSplit,
+    positionalCorrected: bestPlate !== bestRawText,
+  };
 }
 
 module.exports = {

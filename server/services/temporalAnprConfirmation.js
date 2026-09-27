@@ -126,6 +126,7 @@ function createObservation(input = {}, frameContext = {}) {
     frameNumber,
     frameTimestamp,
     frameBuffer: frameContext.frameBuffer || input.frameBuffer || null,
+    vehicleCropBuffer: frameContext.vehicleCropBuffer || input.vehicleCropBuffer || null,
     vehicleType: input.vehicleType || 'vehicle',
     corrections: normResult.corrections || [],
   };
@@ -165,12 +166,16 @@ function buildConsensusPlate(observations = []) {
 
   for (const o of validObs) {
     const text = (o.normalizedPlate || o.rawPlate).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const w = o.weight || o.ocrConfidence || 0.5;
+    const confFactor = Math.pow(Math.max(0.2, o.ocrConfidence || 0.5), 1.5);
+    const w = (o.weight || o.ocrConfidence || 0.5) * confFactor;
 
-    for (let i = 0; i < Math.min(text.length, targetLength); i++) {
-      const ch = text[i];
-      const votes = posVotes[i];
-      votes.set(ch, (votes.get(ch) || 0) + w);
+    // Only align observations that match dominant target length to prevent positional skew
+    if (text.length === targetLength) {
+      for (let i = 0; i < targetLength; i++) {
+        const ch = text[i];
+        const votes = posVotes[i];
+        votes.set(ch, (votes.get(ch) || 0) + w);
+      }
     }
   }
 

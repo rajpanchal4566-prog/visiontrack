@@ -4,6 +4,7 @@
 // ============================================
 const fs = require('fs');
 const path = require('path');
+const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
 const {
   CONFIRMATION_STATES,
@@ -46,6 +47,51 @@ function centroidDistanceRatio(b1, b2) {
   const dist = Math.hypot(c1x - c2x, c1y - c2y);
   const diag = (Math.hypot(b1.width, b1.height) + Math.hypot(b2.width, b2.height)) / 2;
   return diag > 0 ? dist / diag : 1.0;
+}
+
+function editDistance(a, b) {
+  if (a === b) return 0;
+  if (!a || !b) return (a || b).length;
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > 3) return Math.max(la, lb);
+  const dp = Array.from({ length: la + 1 }, (_, i) => i);
+  for (let j = 1; j <= lb; j++) {
+    let prev = dp[0];
+    dp[0] = j;
+    for (let i = 1; i <= la; i++) {
+      const temp = dp[i];
+      dp[i] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[i], dp[i - 1]);
+      prev = temp;
+    }
+  }
+  return dp[la];
+}
+
+/**
+ * Determine if two plate strings genuinely conflict (belong to different physical vehicles)
+ * or if they are near-identical OCR variations/refinements (same physical vehicle).
+ */
+function arePlatesInConflict(p1, p2) {
+  if (!p1 || !p2) return false;
+  const a = String(p1).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const b = String(p2).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (a === b) return false;
+  if (a.length < 5 || b.length < 5) return false;
+
+  // If one is an exact prefix or suffix of the other (e.g. truncated reading), not a conflict
+  if (a.startsWith(b) || b.startsWith(a)) return false;
+
+  // Indian RTO state code check: if both start with 2 letters and state codes differ, definite conflict
+  const stateA = a.slice(0, 2);
+  const stateB = b.slice(0, 2);
+  const isAlpha = s => /^[A-Z]{2}$/.test(s);
+  if (isAlpha(stateA) && isAlpha(stateB) && stateA !== stateB) {
+    return true; // e.g. TS vs AP -> different physical vehicles
+  }
+
+  // Check edit distance: <= 2 is typical OCR noise (6 vs 8, 0 vs O, 1 vs I), not a vehicle conflict
+  const dist = editDistance(a, b);
+  return dist >= 3;
 }
 
 /**
@@ -187,7 +233,11 @@ class TrackedVehicle {
     }
 
     if (detection.vehicleType && detection.vehicleType !== 'unknown') {
-      this.vehicleType = detection.vehicleType;
+      const isTrackTwoWheeler = this.vehicleType === 'motorcycle' || this.vehicleType === 'bicycle';
+      const isDetTwoWheeler = detection.vehicleType === 'motorcycle' || detection.vehicleType === 'bicycle';
+      if (this.framesTracked <= 1 || isTrackTwoWheeler === isDetTwoWheeler) {
+        this.vehicleType = detection.vehicleType;
+      }
     }
     if (detection.speed !== undefined && detection.speed !== null) {
       this.estimatedSpeed = Number(detection.speed);
@@ -207,6 +257,15 @@ class TrackedVehicle {
 
     // 1. Create structured temporal observation
     const obs = createObservation(reading, frameContext);
+
+    // Guard against cross-vehicle contamination: reject conflicting plates ONLY if this track is ALREADY CONFIRMED
+    if (this.confirmedPlate && this.confirmationState === CONFIRMATION_STATES.TRACK_CONFIRMED && reading.plate) {
+      if (arePlatesInConflict(reading.plate, this.confirmedPlate)) {
+        if ((reading.confidence || 0) < 0.90) {
+          return; // Ignore lower-confidence outliers that conflict with an established confirmed plate
+        }
+      }
+    }
 
     // Guard against duplicate observation for the exact same frame on the same track
     const lastObs = this.observations[this.observations.length - 1];
@@ -418,6 +477,7 @@ class TrackedVehicle {
       timestamp: auth.frameTimestamp,
       frameNumber: auth.frameNumber,
       frameBuffer: auth.frameBuffer,
+      vehicleCropBuffer: auth.vehicleCropBuffer || null,
       confirmationState: evaluation.state,
       confirmedPlate: evaluation.confirmedPlate,
       candidatePlate: evaluation.candidatePlate,
@@ -435,7 +495,7 @@ class VehicleTracker {
   constructor(options = {}) {
     this.sampleFps = Number(options.sampleFps || options.fps || 16);
     this.maxMissedTimeSec = Number(options.maxMissedTimeSec ?? 1.8);
-    this.maxMissedFrames = Number(options.maxMissedFrames ?? Math.max(15, Math.round(this.sampleFps * this.maxMissedTimeSec)));
+    this.maxMissedFrames = Number(options.maxMissedFrames ?? Math.max(4, Math.round(this.sampleFps * this.maxMissedTimeSec)));
     this.iouThreshold = Number(options.iouThreshold ?? 0.20);
     this.maxCentroidDistanceRatio = Number(options.maxCentroidDistanceRatio ?? 0.75);
     this.uploadsDir = options.uploadsDir || DEFAULT_UPLOADS_DIR;
@@ -457,7 +517,7 @@ class VehicleTracker {
   setFps(fps) {
     if (fps && fps > 0) {
       this.sampleFps = Number(fps);
-      this.maxMissedFrames = Math.max(15, Math.round(this.sampleFps * this.maxMissedTimeSec));
+      this.maxMissedFrames = Math.max(4, Math.round(this.sampleFps * this.maxMissedTimeSec));
     }
   }
 
@@ -466,7 +526,7 @@ class VehicleTracker {
    * static geometry and velocity-based motion prediction.
    * Also checks recently finalized tracks for trajectory / plate stitching.
    */
-  findBestMatch(detBbox, detPlate = null, frameIndex = 0) {
+  findBestMatch(detBbox, detPlate = null, frameIndex = 0, detVehicleType = null) {
     let bestTrack = null;
     let highestScore = -1;
 
@@ -489,16 +549,46 @@ class VehicleTracker {
       const effectiveIouThreshold = isSmallVehicle ? Math.max(0.08, this.iouThreshold * 0.5) : this.iouThreshold;
       const effectiveCentroidRatio = isSmallVehicle ? Math.min(1.2, this.maxCentroidDistanceRatio * 1.4) : this.maxCentroidDistanceRatio;
 
+      // Plate conflict check: Check detPlate against track's confirmed plate or recent reading plate
+      const trackPlate = track.confirmedPlate || (track.ocrReadings.length > 0 ? track.ocrReadings[track.ocrReadings.length - 1].plate : null);
+      if (detPlate && trackPlate) {
+        if (arePlatesInConflict(detPlate, trackPlate)) {
+          continue; // Skip matching this track — different physical vehicle!
+        }
+      }
+
+      const isExactPlateMatch = detPlate && trackPlate && (detPlate === trackPlate);
+
+      // Size compatibility: a vehicle does not suddenly grow 3.5x or shrink to 1/3 in consecutive frames
+      const detArea = detBbox.width * detBbox.height;
+      const trackArea = track.bbox.width * track.bbox.height;
+      const areaRatio = detArea / Math.max(1, trackArea);
+      const isSizeCompatible = isExactPlateMatch || (areaRatio >= 0.28 && areaRatio <= 3.5);
+      if (!isSizeCompatible) {
+        continue;
+      }
+
+      // Class incompatibility: two-wheelers (motorcycle, bicycle) never match four-wheelers (car, truck, bus)
+      const isTrackTwoWheeler = track.vehicleType === 'motorcycle' || track.vehicleType === 'bicycle';
+      const isDetTwoWheeler = detVehicleType === 'motorcycle' || detVehicleType === 'bicycle';
+      if (!isExactPlateMatch && track.vehicleType && detVehicleType && isTrackTwoWheeler !== isDetTwoWheeler) {
+        continue;
+      }
+
       const isIoUMatch = iou >= effectiveIouThreshold;
-      const isCentroidMatch = cDistRatio <= effectiveCentroidRatio && iou >= 0.03;
-      const isTightCentroid = cDistRatio <= (isSmallVehicle ? 0.45 : 0.35);
+      const isCentroidMatch = cDistRatio <= effectiveCentroidRatio && iou >= 0.05;
+      const isTightCentroid = cDistRatio <= (isSmallVehicle ? 0.40 : 0.30) && (iou >= 0.03 || isExactPlateMatch);
 
       if (isIoUMatch || isCentroidMatch || isTightCentroid) {
         // Combined match affinity: 65% IoU + 35% proximity
         let affinity = iou * 0.65 + (1 - Math.min(1, cDistRatio)) * 0.35;
-        // Bonus if plate matches
-        if (detPlate && track.confirmedPlate && detPlate === track.confirmedPlate) {
-          affinity += 0.5;
+        // Bonus if plate matches or refines
+        if (detPlate && trackPlate) {
+          if (detPlate === trackPlate) {
+            affinity += 0.5;
+          } else if (!arePlatesInConflict(detPlate, trackPlate)) {
+            affinity += 0.35; // Near match / refinement bonus
+          }
         }
         if (affinity > highestScore) {
           highestScore = affinity;
@@ -528,6 +618,20 @@ class VehicleTracker {
         rec.plates.includes(detPlate)
       );
 
+      // If the finalized track had plates, NEVER stitch if detPlate conflicts
+      if (detPlate && (rec.confirmedPlate || rec.plates.length > 0)) {
+        const platesToCheck = [rec.confirmedPlate, ...rec.plates].filter(Boolean);
+        const hasConflict = platesToCheck.some(p => arePlatesInConflict(detPlate, p));
+        if (hasConflict) {
+          continue; // Different vehicle!
+        }
+      }
+
+      // If the finalized track had a confirmed plate, ONLY stitch if plateMatch is TRUE!
+      if (rec.confirmedPlate && !plateMatch) {
+        continue;
+      }
+
       // Check trajectory continuity
       const predX = Math.round(rec.lastBbox.x + rec.vx * deltaFrames);
       const predY = Math.round(rec.lastBbox.y + rec.vy * deltaFrames);
@@ -544,7 +648,7 @@ class VehicleTracker {
       const areaRatio = (detBbox.width * detBbox.height) / Math.max(1, rec.lastBbox.width * rec.lastBbox.height);
       const isSizeCompatible = areaRatio >= 0.4 && areaRatio <= 2.5;
 
-      if ((plateMatch && (iou > 0.02 || cDist < 1.0)) || (isSizeCompatible && (iou >= 0.15 || cDist <= 0.65))) {
+      if ((plateMatch && (iou > 0.02 || cDist < 1.0)) || (!rec.confirmedPlate && isSizeCompatible && deltaFrames <= 4 && (iou >= 0.35 || cDist <= 0.40))) {
         // Stitch / Re-activate track!
         const stitchedTrack = rec.track;
         stitchedTrack.status = 'active';
@@ -572,39 +676,107 @@ class VehicleTracker {
    * @returns {Promise<{ activeTracks: Array<TrackedVehicle>, finalized: Array<object> }>}
    */
   async update(detections = [], frameContext = {}) {
-    const matchedTrackIds = new Set();
-    const newlyFinalized = [];
     const frameIndex = frameContext.frameIndex || 0;
+    const newlyFinalized = [];
 
-    // 1. Associate incoming detections with existing active tracks or stitched tracks
-    for (const det of detections) {
+    // 1. Build bipartite match candidates between detections and active tracks
+    const matchCandidates = [];
+    for (let dIdx = 0; dIdx < detections.length; dIdx++) {
+      const det = detections[dIdx];
       if (!det.bbox) continue;
       const detPlate = det.plate || det.rawPlate || null;
-      const matchedTrack = this.findBestMatch(det.bbox, detPlate, frameIndex);
+      const detArea = det.bbox.width * det.bbox.height;
 
-      if (matchedTrack && !matchedTrackIds.has(matchedTrack.id)) {
-        // If track was inactive (stitched from recent finalized), add back to activeTracks
-        if (!this.activeTracks.has(matchedTrack.id)) {
-          this.activeTracks.set(matchedTrack.id, matchedTrack);
+      for (const [tId, track] of this.activeTracks.entries()) {
+        const iouStatic = bboxIoU(track.bbox, det.bbox);
+        const predBbox = track.getPredictedBbox(track.missedFrames + 1);
+        const iouPred = predBbox ? bboxIoU(predBbox, det.bbox) : 0;
+        const iou = Math.max(iouStatic, iouPred);
+
+        const cDistStatic = centroidDistanceRatio(track.bbox, det.bbox);
+        const cDistPred = predBbox ? centroidDistanceRatio(predBbox, det.bbox) : 1.0;
+        const cDist = Math.min(cDistStatic, cDistPred);
+
+        // Size & Class compatibility
+        const trackArea = track.bbox.width * track.bbox.height;
+        const areaRatio = detArea / Math.max(1, trackArea);
+        const isTrack2W = track.vehicleType === 'motorcycle' || track.vehicleType === 'bicycle';
+        const isDet2W = det.vehicleType === 'motorcycle' || det.vehicleType === 'bicycle';
+        if (isTrack2W !== isDet2W) continue;
+
+        // Plate conflict check
+        const trackPlate = track.confirmedPlate || (track.ocrReadings.length > 0 ? track.ocrReadings[track.ocrReadings.length - 1].plate : null);
+        if (detPlate && trackPlate && arePlatesInConflict(detPlate, trackPlate)) continue;
+
+        const isExactPlateMatch = detPlate && trackPlate && (detPlate === trackPlate);
+        const isSizeCompatible = isExactPlateMatch || (areaRatio >= 0.28 && areaRatio <= 3.5);
+        if (!isSizeCompatible) continue;
+
+        // Spatial threshold: IoU >= 0.15 OR (IoU >= 0.05 and tight centroid <= 0.40) or exact plate match
+        if (iou >= 0.15 || (iou >= 0.05 && cDist <= 0.40) || isExactPlateMatch) {
+          let score = iou * 0.70 + (1 - Math.min(1, cDist)) * 0.30;
+          if (isExactPlateMatch) score += 0.50;
+          else if (detPlate && trackPlate && !arePlatesInConflict(detPlate, trackPlate)) score += 0.30;
+          matchCandidates.push({ dIdx, tId, score });
         }
-        matchedTrack.update(det, frameContext);
-        matchedTrackIds.add(matchedTrack.id);
-        det.trackId = matchedTrack.id;
-        det.shouldSkipOcr = matchedTrack.shouldSkipOcr;
-        det.confirmationState = matchedTrack.confirmationState;
-        det.confirmedPlate = matchedTrack.confirmedPlate;
-      } else {
-        // Unmatched detection: spawn new track
-        const trackId = `TRK-${String(this.nextTrackSeq++).padStart(3, '0')}`;
-        const newTrack = new TrackedVehicle(trackId, det, frameContext);
-        if (this.deferOcr) newTrack.deferredOcrMode = true;
-        this.activeTracks.set(trackId, newTrack);
-        matchedTrackIds.add(trackId);
-        det.trackId = trackId;
-        det.shouldSkipOcr = newTrack.shouldSkipOcr;
-        det.confirmationState = newTrack.confirmationState;
-        det.confirmedPlate = newTrack.confirmedPlate;
       }
+    }
+
+    // Sort descending by score for global optimal bipartite matching
+    matchCandidates.sort((a, b) => b.score - a.score);
+
+    const matchedDetIndices = new Set();
+    const matchedTrackIds = new Set();
+
+    for (const match of matchCandidates) {
+      if (!matchedDetIndices.has(match.dIdx) && !matchedTrackIds.has(match.tId)) {
+        matchedDetIndices.add(match.dIdx);
+        matchedTrackIds.add(match.tId);
+        const track = this.activeTracks.get(match.tId);
+        const det = detections[match.dIdx];
+        track.update(det, frameContext);
+        det.trackId = track.id;
+        det.shouldSkipOcr = track.shouldSkipOcr;
+        det.confirmationState = track.confirmationState;
+        det.confirmedPlate = track.confirmedPlate;
+      }
+    }
+
+    // Check track stitching for unmatched detections
+    for (let dIdx = 0; dIdx < detections.length; dIdx++) {
+      if (matchedDetIndices.has(dIdx)) continue;
+      const det = detections[dIdx];
+      if (!det.bbox) continue;
+      const detPlate = det.plate || det.rawPlate || null;
+      const stitchedTrack = this.findBestMatch(det.bbox, detPlate, frameIndex, det.vehicleType);
+      if (stitchedTrack && !matchedTrackIds.has(stitchedTrack.id)) {
+        if (!this.activeTracks.has(stitchedTrack.id)) {
+          this.activeTracks.set(stitchedTrack.id, stitchedTrack);
+        }
+        stitchedTrack.update(det, frameContext);
+        matchedDetIndices.add(dIdx);
+        matchedTrackIds.add(stitchedTrack.id);
+        det.trackId = stitchedTrack.id;
+        det.shouldSkipOcr = stitchedTrack.shouldSkipOcr;
+        det.confirmationState = stitchedTrack.confirmationState;
+        det.confirmedPlate = stitchedTrack.confirmedPlate;
+      }
+    }
+
+    // Unmatched detections: spawn new tracks
+    for (let dIdx = 0; dIdx < detections.length; dIdx++) {
+      if (matchedDetIndices.has(dIdx)) continue;
+      const det = detections[dIdx];
+      if (!det.bbox) continue;
+      const trackId = `TRK-${String(this.nextTrackSeq++).padStart(3, '0')}`;
+      const newTrack = new TrackedVehicle(trackId, det, frameContext);
+      if (this.deferOcr) newTrack.deferredOcrMode = true;
+      this.activeTracks.set(trackId, newTrack);
+      matchedTrackIds.add(trackId);
+      det.trackId = trackId;
+      det.shouldSkipOcr = newTrack.shouldSkipOcr;
+      det.confirmationState = newTrack.confirmationState;
+      det.confirmedPlate = newTrack.confirmedPlate;
     }
 
     // 2. Identify active tracks that had no match in this frame
@@ -713,13 +885,33 @@ class VehicleTracker {
     let imagePath = null;
     let detId = null;
 
-    if (bestReading && bestReading.frameBuffer) {
+    if (bestReading && (bestReading.vehicleCropBuffer || bestReading.frameBuffer)) {
       detId = `DET-${uuidv4().slice(0, 8).toUpperCase()}`;
       try {
         await fs.promises.mkdir(this.uploadsDir, { recursive: true });
         const fileName = `snap_${detId}_${Date.now()}.jpg`;
         const filePath = path.join(this.uploadsDir, fileName);
-        await fs.promises.writeFile(filePath, bestReading.frameBuffer);
+        // Prefer vehicle crop (shows the full vehicle) over plate crop (tiny text region)
+        let snapshotBuffer = bestReading.vehicleCropBuffer || bestReading.frameBuffer;
+        // If still only a small plate crop, upscale for human readability
+        try {
+          const snapMeta = await sharp(snapshotBuffer).metadata();
+          if (snapMeta && snapMeta.width && snapMeta.width < 200) {
+            const scale = Math.min(4, Math.max(2, Math.ceil(300 / snapMeta.width)));
+            snapshotBuffer = await sharp(snapshotBuffer)
+              .resize({
+                width: snapMeta.width * scale,
+                height: snapMeta.height * scale,
+                kernel: sharp.kernel.lanczos3,
+              })
+              .sharpen({ sigma: 1.0, m1: 1.5, m2: 0.7 })
+              .jpeg({ quality: 92 })
+              .toBuffer();
+          }
+        } catch (_upscaleErr) {
+          // Fall back to original buffer if upscale fails
+        }
+        await fs.promises.writeFile(filePath, snapshotBuffer);
         imagePath = `/uploads/detections/${fileName}`;
       } catch (err) {
         console.warn(`[VehicleTracker] Could not save frame snapshot: ${err.message}`);
@@ -790,7 +982,7 @@ class VehicleTracker {
    * Finalize all active tracks immediately (called on stream finish / stop)
    */
   async finalizeAll() {
-    const finalized = [];
+    const finalized = [...this.finalizedTracks];
     const remainingTrackIds = [...this.activeTracks.keys()];
 
     for (const trackId of remainingTrackIds) {
@@ -836,8 +1028,27 @@ class VehicleTracker {
         if (rec.observations) {
           existing.observations.push(...rec.observations);
         }
-        // Update bestReading if current has higher confidence
-        if (rec.bestReading?.confidence > (existing.bestReading?.confidence || 0)) {
+        // Re-evaluate combined observations to determine authoritative plate via temporal consensus
+        if (existing.observations && existing.observations.length > 0) {
+          const evalRes = evaluateTrackObservations(existing.observations);
+          if (evalRes && evalRes.confirmedPlate) {
+            existing.confirmedPlate = evalRes.confirmedPlate;
+            if (evalRes.authoritativeReading) {
+              const auth = evalRes.authoritativeReading;
+              existing.bestReading = {
+                ...(existing.bestReading || {}),
+                plate: evalRes.confirmedPlate,
+                rawPlate: auth.rawPlate,
+                ocrText: auth.rawPlate,
+                confidence: auth.ocrConfidence,
+                ocrConfidence: Math.round(auth.ocrConfidence * 100),
+                confirmationState: evalRes.state,
+                confirmedPlate: evalRes.confirmedPlate,
+                agreementCount: evalRes.agreementCount,
+              };
+            }
+          }
+        } else if (rec.bestReading?.confidence > (existing.bestReading?.confidence || 0)) {
           existing.bestReading = rec.bestReading;
           existing.confirmedPlate = rec.confirmedPlate || existing.confirmedPlate;
         }
@@ -846,6 +1057,7 @@ class VehicleTracker {
       }
     }
 
+    this.finalizedTracks = merged;
     return merged;
   }
 

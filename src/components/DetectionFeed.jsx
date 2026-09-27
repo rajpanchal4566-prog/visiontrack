@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Camera, Clock, FileText, Gauge, ImageOff } from 'lucide-react';
 import DetectionDetailModal from './DetectionDetailModal';
+import { API_ORIGIN } from '../services/config';
 import './DetectionFeed.css';
 
 function getImageSrc(value) {
@@ -9,7 +10,7 @@ function getImageSrc(value) {
     return `data:image/jpeg;base64,${value.replace(/\s/g, '')}`;
   }
   if (/^(data:|https?:\/\/)/i.test(value)) return value;
-  return `http://${window.location.hostname}:3001/${String(value).replace(/^\//, '')}`;
+  return `${API_ORIGIN}/${String(value).replace(/^\//, '')}`;
 }
 
 function formatTime(value) {
