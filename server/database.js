@@ -490,6 +490,57 @@ function seedDatabase() {
     console.log(`Generated organization API key for ${organization.id}: ${apiKey}`);
   }
 
+  // Ensure default admin user and organization exist if fresh database
+  try {
+    const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get()?.c || 0;
+    if (userCount === 0) {
+      const bcrypt = require('bcryptjs');
+      const defaultOrgId = 'ORG-DEFAULT-01';
+      db.prepare(`INSERT OR IGNORE INTO organizations (id, name, city, state, organization_type, api_key)
+        VALUES (?, 'VisionTrack Central Command', 'Pune', 'Maharashtra', 'law_enforcement', ?)`
+      ).run(defaultOrgId, `anpr_${crypto.randomBytes(24).toString('hex')}`);
+
+      const hash = bcrypt.hashSync('admin123', 10);
+      db.prepare(`INSERT OR IGNORE INTO users (id, organization_id, name, email, password_hash, role)
+        VALUES (?, ?, 'System Administrator', 'admin@visiontrack.io', ?, 'admin')`
+      ).run('USR-ADMIN-DEFAULT', defaultOrgId, hash);
+      console.log('🔑 Fresh Database: Seeded default administrator (admin@visiontrack.io / admin123)');
+    }
+  } catch (err) {
+    console.warn(`[seedDatabase] User seed notice: ${err.message}`);
+  }
+
+  // Ensure default camera network exists if fresh database
+  try {
+    const camCount = db.prepare('SELECT COUNT(*) as c FROM cameras').get()?.c || 0;
+    if (camCount === 0) {
+      const defaultCameras = [
+        ['CAM-001', 'FC Road Junction', 18.5204, 73.8567, 'Zone A', 'online', 50],
+        ['CAM-002', 'JM Road Signal', 18.5185, 73.8410, 'Zone A', 'online', 50],
+        ['CAM-003', 'Hinjewadi IT Park Gate', 18.5913, 73.7389, 'Zone B', 'online', 60],
+        ['CAM-004', 'Swargate Transit Hub', 18.5018, 73.8636, 'Zone A', 'online', 50],
+        ['CAM-005', 'Katraj Tunnel Entry', 18.4529, 73.8627, 'Zone C', 'degraded', 60],
+        ['CAM-006', 'Pune Station North', 18.5285, 73.8743, 'Zone A', 'online', 40],
+        ['CAM-007', 'Hadapsar Bypass', 18.5089, 73.9260, 'Zone D', 'online', 70],
+        ['CAM-008', 'Baner Expressway Link', 18.5590, 73.7868, 'Zone B', 'online', 80],
+        ['CAM-009', 'Kothrud Depot Circle', 18.5074, 73.8077, 'Zone B', 'online', 50],
+        ['CAM-010', 'Viman Nagar Airport Road', 18.5679, 73.9143, 'Zone D', 'online', 60],
+        ['CAM-011', 'Magarpatta Cyber City', 18.5133, 73.9263, 'Zone D', 'online', 50],
+        ['CAM-012', 'Shivaji Nagar Interchange', 18.5308, 73.8475, 'Zone A', 'online', 50],
+      ];
+      const defaultOrg = db.prepare('SELECT id FROM organizations LIMIT 1').get()?.id || 'ORG-DEFAULT-01';
+      const insCam = db.prepare(`INSERT OR IGNORE INTO cameras
+        (id, name, city, lat, lng, zone, status, type, uptime, organization_id, speed_limit_kmh, detect_speeding, detect_helmet, detect_seatbelt)
+        VALUES (?, ?, 'Pune', ?, ?, ?, ?, 'both', 99.0, ?, ?, 1, 1, 1)`);
+      for (const [id, name, lat, lng, zone, status, speed] of defaultCameras) {
+        insCam.run(id, name, lat, lng, zone, status, defaultOrg, speed);
+      }
+      console.log('🎥 Fresh Database: Seeded 12 smart traffic network cameras across city zones');
+    }
+  } catch (err) {
+    console.warn(`[seedDatabase] Camera seed notice: ${err.message}`);
+  }
+
   // Ensure default demo cameras and baseline travel speed validation data exist
   // so speed validation logic and stats are never blank or forgotten after restart
   try {

@@ -3,10 +3,15 @@
 // ============================================
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET;
+let JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is required. Refusing to start.');
-  process.exit(1);
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: JWT_SECRET environment variable is required in production. Refusing to start.');
+    process.exit(1);
+  } else {
+    JWT_SECRET = 'dev_visiontrack_jwt_secret_change_in_production_key_4566';
+    console.warn('⚠️ Notice: JWT_SECRET not set. Using development secret. Set JWT_SECRET in .env for production.');
+  }
 }
 const JWT_EXPIRY = '24h';
 
