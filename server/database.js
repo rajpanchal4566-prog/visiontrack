@@ -465,6 +465,14 @@ function initializeDatabase() {
     if (!err.message.includes('duplicate column name')) throw err;
   }
 
+  // Ensure all cameras have valid speed_limit_kmh and detect_speeding defaults
+  try {
+    db.exec(`
+      UPDATE cameras SET speed_limit_kmh = 50 WHERE speed_limit_kmh IS NULL;
+      UPDATE cameras SET detect_speeding = 1 WHERE detect_speeding IS NULL;
+    `);
+  } catch (_) {}
+
   console.log('✅ Database tables created (core + auth/multi-org + servers + flagging)');
   try {
     const { syncTrafficStats } = require('./services/detectionPersistence');
@@ -480,6 +488,52 @@ function seedDatabase() {
     const apiKey = `anpr_${crypto.randomBytes(24).toString('hex')}`;
     updateKey.run(apiKey, organization.id);
     console.log(`Generated organization API key for ${organization.id}: ${apiKey}`);
+  }
+
+  // Ensure default demo cameras and baseline travel speed validation data exist
+  // so speed validation logic and stats are never blank or forgotten after restart
+  try {
+    const valCount = db.prepare('SELECT COUNT(*) as c FROM travel_validations').get()?.c || 0;
+    if (valCount === 0) {
+      const organizationId = 'ORG-TRAVEL-DEMO';
+      db.prepare(`INSERT OR IGNORE INTO organizations (id, name, city, state, organization_type, api_key)
+        VALUES (?, 'Travel Validation Demo', 'Pune', 'Maharashtra', 'demo', ?)`)
+        .run(organizationId, 'demo_travel_validation_key');
+
+      const cameras = [
+        ['CAM-001', 'Demo Gate A', 18.5204, 73.8567, 'Central Gate', 50],
+        ['CAM-002', 'Demo Junction B', 18.5314, 73.8446, 'North Junction', 50],
+        ['CAM-003', 'Demo Highway C', 18.6908, 73.8753, 'Highway Exit', 80],
+      ];
+      const insertCamera = db.prepare(`INSERT OR IGNORE INTO cameras
+        (id, name, city, lat, lng, zone, status, type, uptime, organization_id, api_token, endpoint_status, speed_limit_kmh, detect_speeding)
+        VALUES (?, ?, 'Pune', ?, ?, ?, 'online', 'metadata', 99, ?, ?, 'connected', ?, 1)`);
+      for (const [id, name, lat, lng, zone, limit] of cameras) {
+        insertCamera.run(id, name, lat, lng, zone, organizationId, `demo_token_${id}`, limit);
+      }
+
+      const { validateDetection } = require('./services/travelValidation');
+      const insertDet = db.prepare(`INSERT OR IGNORE INTO detections
+        (id, event_id, plate, camera_id, location_id, timestamp, confidence, vehicle_type, speed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'Sedan', ?)`);
+
+      const now = Date.now();
+      const t1 = new Date(now - 15 * 60 * 1000).toISOString();
+      const t2 = new Date(now - 3 * 60 * 1000).toISOString();
+      const t3 = new Date(now - 1 * 60 * 1000).toISOString();
+
+      insertDet.run('DEMO-NORMAL-A', 'DEMO-NORMAL-A-event', 'DEMO-NORMAL', 'CAM-001', 'Central Gate', t1, 0.98, 45);
+      insertDet.run('DEMO-NORMAL-B', 'DEMO-NORMAL-B-event', 'DEMO-NORMAL', 'CAM-002', 'North Junction', t2, 0.98, 48);
+      validateDetection({ id: 'DEMO-NORMAL-A' }).catch(() => {});
+      validateDetection({ id: 'DEMO-NORMAL-B' }).catch(() => {});
+
+      insertDet.run('DEMO-SPEED-A', 'DEMO-SPEED-A-event', 'DEMO-SPEED', 'CAM-001', 'Central Gate', t1, 0.96, 75);
+      insertDet.run('DEMO-SPEED-B', 'DEMO-SPEED-B-event', 'DEMO-SPEED', 'CAM-002', 'North Junction', t3, 0.96, 85);
+      validateDetection({ id: 'DEMO-SPEED-A' }).catch(() => {});
+      validateDetection({ id: 'DEMO-SPEED-B' }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn(`[seedDatabase] Travel validation seed notice: ${err.message}`);
   }
 }
 

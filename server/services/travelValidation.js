@@ -33,14 +33,16 @@ function scoreValidation({ first, second, elapsedSeconds, speedKmh, impossible, 
 }
 
 function findPreviousDetection(db, detection) {
+  const cleanPlate = String(detection.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   return db.prepare(`
     SELECT d.*, c.name as camera_name, c.city, c.zone, c.lat, c.lng, c.status, c.speed_limit_kmh
     FROM detections d
     JOIN cameras c ON c.id = d.camera_id
-    WHERE d.plate = ? AND d.camera_id != ? AND d.timestamp <= ?
+    WHERE (d.plate = ? OR REPLACE(REPLACE(UPPER(d.plate), '-', ''), ' ', '') = ?)
+      AND d.camera_id != ? AND d.timestamp <= ?
     ORDER BY d.timestamp DESC
     LIMIT 1
-  `).get(detection.plate, detection.camera_id, detection.timestamp);
+  `).get(detection.plate, cleanPlate, detection.camera_id, detection.timestamp);
 }
 
 async function validateDetection(detection, options = {}) {

@@ -132,7 +132,10 @@ async function detectViolations(frameData = {}) {
     ? Number(frameData.speed)
     : (telemetry.speed !== undefined ? Number(telemetry.speed) : null);
 
-  // If speed is not given by hardware/telemetry, estimate from tracker
+  // If speed is not given by hardware/telemetry, check vehicle track or estimate from tracker
+  if (currentSpeed === null && (track?.estimatedSpeed !== undefined && track?.estimatedSpeed !== null)) {
+    currentSpeed = track.estimatedSpeed;
+  }
   if (currentSpeed === null && vehicleBbox) {
     const trackKey = frameData.trackId
       ? `${camera.id || 'cam'}:${frameData.trackId}`
@@ -174,14 +177,18 @@ async function detectViolations(frameData = {}) {
     }
 
     const mergedViolations = [...cached.violations.filter(v => v.category !== 'speed'), ...speedViolations];
-    return {
+    const resolvedSpeed = currentSpeed !== null ? Math.round(currentSpeed) : (cached.speed ?? track.estimatedSpeed ?? null);
+    const updatedOutcome = {
       violations: mergedViolations,
       flagged: mergedViolations.length > 0,
       violation_type: mergedViolations.map(v => v.label).join(', ') || null,
-      speed: currentSpeed !== null ? Math.round(currentSpeed) : cached.speed,
+      speed: resolvedSpeed,
       vehicle_bbox: vehicleBbox || cached.vehicle_bbox,
       speed_limit: speedLimit,
     };
+    track.cachedViolations = updatedOutcome;
+    if (resolvedSpeed !== null) track.estimatedSpeed = resolvedSpeed;
+    return updatedOutcome;
   }
 
   if (detectSpeeding && currentSpeed !== null && Number.isFinite(currentSpeed)) {
@@ -293,7 +300,7 @@ async function detectViolations(frameData = {}) {
     violations,
     flagged: violations.length > 0,
     violation_type: violations.map(v => v.label).join(', ') || null,
-    speed: currentSpeed !== null ? Math.round(currentSpeed) : null,
+    speed: currentSpeed !== null ? Math.round(currentSpeed) : (track?.estimatedSpeed ?? null),
     vehicle_bbox: vehicleBbox,
     speed_limit: speedLimit,
   };
@@ -301,6 +308,7 @@ async function detectViolations(frameData = {}) {
   if (track) {
     track.cachedViolations = outcome;
     track.violationEvaluated = true;
+    if (outcome.speed !== null) track.estimatedSpeed = outcome.speed;
   }
 
   return outcome;

@@ -241,6 +241,26 @@ class TrackedVehicle {
     }
     if (detection.speed !== undefined && detection.speed !== null) {
       this.estimatedSpeed = Number(detection.speed);
+    } else if (this.framesTracked >= 2 && prevBbox) {
+      const dt = Math.max(1, (frameContext.frameIndex || 0) - this.lastSeenFrame);
+      const fps = frameContext.sampleFps || 16;
+      const dtSeconds = dt / fps;
+      if (dtSeconds > 0.02 && dtSeconds < 3.0) {
+        const cX = newBbox.x + newBbox.width / 2;
+        const cY = newBbox.y + newBbox.height / 2;
+        const pX = prevBbox.x + prevBbox.width / 2;
+        const pY = prevBbox.y + prevBbox.height / 2;
+        const distPx = Math.sqrt((cX - pX) ** 2 + (cY - pY) ** 2);
+        // Using calibrated 18 pixels/meter for standard camera view
+        const distMeters = distPx / 18;
+        const rawSpeedKmh = (distMeters / dtSeconds) * 3.6;
+        if (rawSpeedKmh >= 5 && rawSpeedKmh <= 220) {
+          const smoothed = this.estimatedSpeed ? (this.estimatedSpeed * 0.4 + rawSpeedKmh * 0.6) : rawSpeedKmh;
+          this.estimatedSpeed = Math.round(smoothed);
+        } else if (rawSpeedKmh < 5 && this.framesTracked > 5) {
+          this.estimatedSpeed = 0;
+        }
+      }
     }
     this.lastSeenFrame = frameContext.frameIndex || this.lastSeenFrame + 1;
     this.lastSeenTime = frameContext.timestamp || new Date().toISOString();
@@ -478,6 +498,7 @@ class TrackedVehicle {
       frameNumber: auth.frameNumber,
       frameBuffer: auth.frameBuffer,
       vehicleCropBuffer: auth.vehicleCropBuffer || null,
+      speed: this.estimatedSpeed ?? null,
       confirmationState: evaluation.state,
       confirmedPlate: evaluation.confirmedPlate,
       candidatePlate: evaluation.candidatePlate,
@@ -926,7 +947,7 @@ class VehicleTracker {
       hasPlate: Boolean(bestReading?.plate),
       confirmationState: track.confirmationState,
       confirmedPlate: track.confirmedPlate,
-      speed: track.estimatedSpeed ?? null,
+      speed: track.estimatedSpeed ?? track.cachedViolations?.speed ?? null,
       bestReading: bestReading ? {
         plate: bestReading.plate,
         rawPlate: bestReading.rawPlate,

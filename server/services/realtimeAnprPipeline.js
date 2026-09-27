@@ -153,6 +153,21 @@ class RealtimeAnprPipeline {
     if (typeof camera === 'string') {
       camera = db.prepare('SELECT * FROM cameras WHERE id = ?').get(camera);
     }
+    if (!camera && context.cameraId) {
+      camera = db.prepare('SELECT * FROM cameras WHERE id = ?').get(context.cameraId) || null;
+    }
+    if (!camera) {
+      camera = {
+        id: context.cameraId || 'CAM-STREAM',
+        name: 'Stream Camera',
+        city: 'Local',
+        zone: 'Zone-1',
+        speed_limit_kmh: 50,
+        detect_speeding: 1,
+        detect_helmet: 1,
+        detect_seatbelt: 1,
+      };
+    }
     const cameraId = camera?.id || context.cameraId || 'CAM-STREAM';
     const trackerKey = context.trackerKey || cameraId;
 
@@ -588,7 +603,7 @@ class RealtimeAnprPipeline {
 
     // Stage 5: Multi-Violation Detection (Helmet, Seatbelt, Speeding)
     const tViol0 = Date.now();
-    const existingTrackMatch = vehicleBbox ? tracker.findBestMatch(vehicleBbox) : null;
+    const existingTrackMatch = vehicleBbox ? tracker.findBestMatch(vehicleBbox, primaryPlate, frameSeq, detectedVehicleType) : null;
     const violationResult = await detectViolations({
       imageBuffer: activeFrame,
       vehicle: {
@@ -601,15 +616,22 @@ class RealtimeAnprPipeline {
       trackId: existingTrackMatch?.id,
       track: existingTrackMatch,
       timestamp,
-      speed: context.telemetry?.speed,
-      camera: camera || { speed_limit_kmh: 50 },
+      speed: context.telemetry?.speed ?? existingTrackMatch?.estimatedSpeed ?? null,
+      camera: camera || { speed_limit_kmh: 50, detect_speeding: 1 },
       telemetry: context.telemetry || {},
     });
     timings.violationMs = Date.now() - tViol0;
 
+    if (violationResult.speed !== null && violationResult.speed !== undefined && existingTrackMatch) {
+      existingTrackMatch.estimatedSpeed = violationResult.speed;
+      if (existingTrackMatch.cachedViolations) {
+        existingTrackMatch.cachedViolations.speed = violationResult.speed;
+      }
+    }
+
     overlay.violations = violationResult.violations || [];
     overlay.flagged = violationResult.flagged || false;
-    overlay.speed = violationResult.speed;
+    overlay.speed = violationResult.speed ?? existingTrackMatch?.estimatedSpeed ?? null;
 
     // FIX (Bug 5): Map active tracks to Live HUD Overlay WITH per-track plate identity.
     // Each vehicle carries its OWN confirmedPlate, confirmationState, and plateBbox so
@@ -645,7 +667,7 @@ class RealtimeAnprPipeline {
           confidence: finalized.bestReading.confidence,
           vehicleType: finalized.vehicleType,
           vehicleBbox: finalized.track?.bbox,
-          speed: finalized.speed ?? finalized.track?.estimatedSpeed ?? violationResult.speed ?? null,
+          speed: finalized.speed ?? finalized.track?.estimatedSpeed ?? finalized.track?.cachedViolations?.speed ?? violationResult.speed ?? null,
           ocrResult: finalized.bestReading,
           violationResult,
           sourceType,
@@ -918,10 +940,9 @@ class RealtimeAnprPipeline {
           }
         }
 
-        if (data.camera) {
-          checkWatchlist({ ...detection, camera: data.camera }, global.io);
-          validateDetection(detection).catch(() => {});
-        }
+        const camForValidation = data.camera || (data.cameraId ? db.prepare('SELECT * FROM cameras WHERE id = ?').get(data.cameraId) : null) || { id: data.cameraId || 'CAM-STREAM', speed_limit_kmh: 50 };
+        checkWatchlist({ ...detection, camera: camForValidation }, global.io);
+        validateDetection(detection).catch(() => {});
 
         console.log(`[SmartANPR] ✅ Persisted ${detection.plate} (${detection.vehicle_type}) [Track: ${data.trackId || 'N/A'}] ${flagged ? '⚠️ VIOLATIONS: ' + violationType : ''}`);
         return detection;
