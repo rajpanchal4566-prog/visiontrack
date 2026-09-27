@@ -140,6 +140,8 @@ class RtspIngestion {
       ffmpegArgs.push('-timeout', '5000000');
     }
     ffmpegArgs.push(
+      '-fflags', '+nobuffer+discardcorrupt',
+      '-flags', 'low_delay',
       '-i', worker.url,
       '-vf', `fps=${frameRate},scale='if(gt(iw,1920),1920,iw)':-2`,
       '-f', 'image2pipe',
@@ -147,6 +149,12 @@ class RtspIngestion {
       '-q:v', '3',
       'pipe:1',
     );
+    if (worker.retryTimer) {
+      clearTimeout(worker.retryTimer);
+      worker.retryTimer = null;
+    }
+    worker.busy = false;
+
     const child = spawn(ffmpegPath(), ffmpegArgs, { windowsHide: true });
 
     worker.child = child;
@@ -171,6 +179,11 @@ class RtspIngestion {
   async #processFrame(worker, frame) {
     if (worker.state === 'stopping' || worker.busy) return;
     worker.busy = true;
+
+    if (worker.retries > 0 || worker.state === 'reconnecting') {
+      console.log(`[RTSP] Stream recovered for ${worker.cameraId}`);
+      worker.retries = 0;
+    }
     worker.state = 'running';
     worker.frames += 1;
 
@@ -186,11 +199,6 @@ class RtspIngestion {
     }
     worker.lastFrameTime = now;
 
-    if (worker.retries > 0) {
-      console.log(`[RTSP] Stream recovered for ${worker.cameraId} (after ${worker.retries} retries)`);
-      worker.retries = 0;
-    }
-
     try {
       const db = getDb();
       const camera = db.prepare('SELECT * FROM cameras WHERE id = ?').get(worker.cameraId);
@@ -198,6 +206,7 @@ class RtspIngestion {
       const result = await realtimeAnprPipeline.processFrame(frame, {
         camera,
         cameraId: worker.cameraId,
+        sampleFps: worker.sampleFps,
         sourceType: 'rtsp',
         emitSocket: true,
       });
@@ -222,6 +231,7 @@ class RtspIngestion {
   #drop(worker, error) {
     if (worker.state === 'stopping' || !this.workers.has(worker.cameraId)) return;
     worker.child = null;
+    worker.busy = false;
     worker.lastError = error.message;
     worker.retries += 1;
     console.warn(`[RTSP] Stream dropped for ${worker.cameraId}: ${error.message}`);
@@ -253,6 +263,8 @@ class RtspIngestion {
         ffmpegArgs.push('-timeout', '5000000');
       }
       ffmpegArgs.push(
+        '-fflags', '+nobuffer+discardcorrupt',
+        '-flags', 'low_delay',
         '-i', url,
         '-vf', `scale='if(gt(iw,ih),min(640,iw),-2)':'if(gt(iw,ih),-2,min(640,ih))'`,
         '-vframes', '1',

@@ -940,6 +940,7 @@ class RealtimeAnprPipeline {
           }
         }
 
+        const db = getDb();
         const camForValidation = data.camera || (data.cameraId ? db.prepare('SELECT * FROM cameras WHERE id = ?').get(data.cameraId) : null) || { id: data.cameraId || 'CAM-STREAM', speed_limit_kmh: 50 };
         checkWatchlist({ ...detection, camera: camForValidation }, global.io);
         validateDetection(detection).catch(() => {});
