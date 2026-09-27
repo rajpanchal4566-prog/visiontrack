@@ -572,10 +572,12 @@ class VehicleTracker {
 
       // Plate conflict check: Check detPlate against track's confirmed plate or recent reading plate
       const trackPlate = track.confirmedPlate || (track.ocrReadings.length > 0 ? track.ocrReadings[track.ocrReadings.length - 1].plate : null);
-      if (detPlate && trackPlate) {
-        if (arePlatesInConflict(detPlate, trackPlate)) {
-          continue; // Skip matching this track — different physical vehicle!
-        }
+      const isStrongSpatial = iou >= 0.35 || cDistRatio <= 0.25;
+      if (detPlate && track.confirmedPlate && arePlatesInConflict(detPlate, track.confirmedPlate) && !isStrongSpatial) {
+        continue; // Confirmed plate conflict with weak spatial evidence
+      }
+      if (detPlate && !track.confirmedPlate && trackPlate && arePlatesInConflict(detPlate, trackPlate) && !isStrongSpatial) {
+        continue; // Unconfirmed plate conflict with weak spatial evidence
       }
 
       const isExactPlateMatch = detPlate && trackPlate && (detPlate === trackPlate);
@@ -725,9 +727,15 @@ class VehicleTracker {
         const isDet2W = det.vehicleType === 'motorcycle' || det.vehicleType === 'bicycle';
         if (isTrack2W !== isDet2W) continue;
 
-        // Plate conflict check
+        // Plate conflict check: don't let transient OCR noise break physical track continuity under strong spatial overlap
         const trackPlate = track.confirmedPlate || (track.ocrReadings.length > 0 ? track.ocrReadings[track.ocrReadings.length - 1].plate : null);
-        if (detPlate && trackPlate && arePlatesInConflict(detPlate, trackPlate)) continue;
+        const isStrongSpatial = iou >= 0.35 || cDist <= 0.25;
+        if (detPlate && track.confirmedPlate && arePlatesInConflict(detPlate, track.confirmedPlate) && !isStrongSpatial) {
+          continue;
+        }
+        if (detPlate && !track.confirmedPlate && trackPlate && arePlatesInConflict(detPlate, trackPlate) && !isStrongSpatial) {
+          continue;
+        }
 
         const isExactPlateMatch = detPlate && trackPlate && (detPlate === trackPlate);
         const isSizeCompatible = isExactPlateMatch || (areaRatio >= 0.28 && areaRatio <= 3.5);
