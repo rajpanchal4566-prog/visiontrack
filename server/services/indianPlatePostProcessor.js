@@ -7,6 +7,7 @@
 const path = require('path');
 const sharp = require('sharp');
 const { recognizePlateNeural } = require('./neuralPlateOcr');
+const { recognizePlateCtc, isCtcOcrAvailable } = require('./ctcPlateOcr');
 
 const INDIA_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'license-plate-ocr-india-finetuned.onnx');
 const BASE_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'license-plate-ocr.onnx');
@@ -158,13 +159,18 @@ async function recognizePlateNeuralEnhanced(cropBuffer, modelPath = null) {
 
   const { createPlateTensor, getSession } = require('./neuralPlateOcr');
 
-  // Step 1: Initialize ONNX sessions for dual-model ensemble
-  const [sIndia, sBase] = await Promise.all([
+  // Step 1: Initialize ONNX sessions for CTC and dual-model ensemble in parallel
+  const ctcPromise = isCtcOcrAvailable()
+    ? recognizePlateCtc(cropBuffer, { allowTwoLineSplit: true }).catch(() => null)
+    : Promise.resolve(null);
+
+  const [sIndia, sBase, rCtc] = await Promise.all([
     getSession(targetModel),
     getSession(BASE_MODEL_PATH),
+    ctcPromise,
   ]);
 
-  if (!sIndia && !sBase) {
+  if (!sIndia && !sBase && (!rCtc || !rCtc.success)) {
     return {
       success: false,
       plate: null,
@@ -177,26 +183,45 @@ async function recognizePlateNeuralEnhanced(cropBuffer, modelPath = null) {
     };
   }
 
-  // Step 2: Preprocess crop buffer to ONNX tensor ONCE
-  let tensor;
-  try {
-    tensor = await createPlateTensor(cropBuffer, 0);
-  } catch {
-    // If sharp fails to preprocess, fall back to standard single model
-    return await recognizePlateNeural(cropBuffer, targetModel);
+  // Step 2: Preprocess crop buffer to ONNX tensor for CCT-XS models (if available)
+  let tensor = null;
+  if (sIndia || sBase) {
+    try {
+      tensor = await createPlateTensor(cropBuffer, 0);
+    } catch {
+      // If sharp preprocessing fails for fixed-slot model, use CTC if available
+      if (rCtc && rCtc.success) {
+        return {
+          ...rCtc,
+          latencyMs: Number((performance.now() - startTime).toFixed(2)),
+        };
+      }
+      return await recognizePlateNeural(cropBuffer, targetModel);
+    }
   }
 
-  // Step 3: Run dual-model inference in parallel
+  // Step 3: Run CCT-XS inference in parallel
   const sessionRuns = [];
-  if (sIndia) sessionRuns.push(sIndia.run({ input: tensor }));
-  if (sBase && sBase !== sIndia) sessionRuns.push(sBase.run({ input: tensor }));
+  if (sIndia && tensor) sessionRuns.push(sIndia.run({ input: tensor }));
+  if (sBase && sBase !== sIndia && tensor) sessionRuns.push(sBase.run({ input: tensor }));
 
-  const sessionResults = await Promise.all(sessionRuns);
-  const rIndia = sIndia ? decodeSessionLogits(sessionResults[0].plate.data) : null;
+  const sessionResults = sessionRuns.length > 0 ? await Promise.all(sessionRuns) : [];
+  const rIndia = (sIndia && sessionResults[0]) ? decodeSessionLogits(sessionResults[0].plate.data) : null;
   const rBase = (sBase && sessionResults.length > 1) ? decodeSessionLogits(sessionResults[1].plate.data) : null;
 
-  // Step 4: Aggregate beam candidates from all models
+  // Step 4: Aggregate beam candidates from all models (CTC + India + Base)
   const allCandidates = [];
+  if (rCtc && rCtc.success) {
+    for (const c of rCtc.candidates) {
+      allCandidates.push({
+        text: c,
+        conf: rCtc.confidence,
+        isBase: c === rCtc.plate,
+        model: 'ctc',
+        isTwoLine: rCtc.isTwoLineSplit,
+      });
+    }
+  }
   if (rIndia) {
     for (const c of rIndia.candidates) {
       allCandidates.push({ text: c, conf: rIndia.confidence, isBase: c === rIndia.rawPlate, model: 'india' });
@@ -209,10 +234,11 @@ async function recognizePlateNeuralEnhanced(cropBuffer, modelPath = null) {
   }
 
   let bestPlate = '';
-  let bestRawText = rIndia?.rawPlate || rBase?.rawPlate || '';
+  let bestRawText = rCtc?.plate || rIndia?.rawPlate || rBase?.rawPlate || '';
   let bestScore = -Infinity;
-  let bestCharConfidences = rIndia?.charConfidences || rBase?.charConfidences || [];
-  let bestConf = rIndia?.confidence || rBase?.confidence || 0;
+  let bestCharConfidences = rCtc?.charConfidences || rIndia?.charConfidences || rBase?.charConfidences || [];
+  let bestConf = rCtc?.confidence || rIndia?.confidence || rBase?.confidence || 0;
+  let isTwoLineSplit = Boolean(rCtc?.isTwoLineSplit);
 
   for (const cand of allCandidates) {
     const norm = normalizePlateText(cand.text);
@@ -222,8 +248,22 @@ async function recognizePlateNeuralEnhanced(cropBuffer, modelPath = null) {
     // Add confidence weight
     score += cand.conf * 20;
 
-    // Agreement bonus: if both models agree on the plate string
-    if (rIndia && rBase && rIndia.rawPlate === rBase.rawPlate && p === rIndia.rawPlate) {
+    // CTC Model specific weight:
+    // Handles arbitrary plate lengths (7, 8, 9, 10, 11) without fixed slot padding
+    if (cand.model === 'ctc') {
+      score += 15;
+      if (p.length !== 10) {
+        // High bonus for naturally decoded 7/8/9/11 character plate
+        score += 20;
+      }
+    }
+
+    // Cross-architecture consensus bonus: if CTC and CCT-XS agree
+    if (rCtc && rCtc.success && p === rCtc.plate) {
+      if ((rIndia && p === rIndia.rawPlate) || (rBase && p === rBase.rawPlate)) {
+        score += 45; // High confidence multi-architecture agreement
+      }
+    } else if (rIndia && rBase && rIndia.rawPlate === rBase.rawPlate && p === rIndia.rawPlate) {
       score += 35;
     }
 
@@ -235,7 +275,10 @@ async function recognizePlateNeuralEnhanced(cropBuffer, modelPath = null) {
       bestPlate = p;
       bestRawText = cand.text;
       bestConf = cand.conf;
-      if (cand.isBase && cand.model === 'india' && rIndia) {
+      if (cand.model === 'ctc' && rCtc) {
+        bestCharConfidences = rCtc.charConfidences;
+        if (cand.isTwoLine) isTwoLineSplit = true;
+      } else if (cand.isBase && cand.model === 'india' && rIndia) {
         bestCharConfidences = rIndia.charConfidences;
       } else if (cand.isBase && cand.model === 'base' && rBase) {
         bestCharConfidences = rBase.charConfidences;
@@ -280,7 +323,6 @@ async function recognizePlateNeuralEnhanced(cropBuffer, modelPath = null) {
 
   // Step 6: Guarded two-line splitting
   // Only attempt two-line splitting if aspect ratio < 2.2 AND single-crop candidate is NOT a valid Indian plate format
-  let isTwoLineSplit = false;
   let metadata;
   try {
     metadata = await sharp(cropBuffer).metadata();

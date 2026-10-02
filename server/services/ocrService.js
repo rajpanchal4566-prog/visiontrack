@@ -37,6 +37,7 @@ function ocrLog(...args) {
 const { recognizeWithPlateRecognizer } = require('./ocrProviders');
 // Neural ONNX raw functions & shutdown.
 const { isNeuralOcrAvailable, shutdownNeuralOcr } = require('./neuralPlateOcr');
+const { isCtcOcrAvailable, shutdownCtcOcr, recognizePlateCtc } = require('./ctcPlateOcr');
 // ocrFusion — kept for diagnostic routes.
 const { fuseOcrResults } = require('./ocrFusion'); // eslint-disable-line no-unused-vars
 
@@ -561,6 +562,7 @@ async function shutdownOcr() {
   }
   await shutdownPlateDetector();
   await shutdownNeuralOcr();
+  await shutdownCtcOcr();
 }
 
 module.exports = {
@@ -569,4 +571,6 @@ module.exports = {
   findOcrImageSource,
   resolveImageForOcr,
   shutdownOcr,
+  isCtcOcrAvailable,
+  recognizePlateCtc,
 };
