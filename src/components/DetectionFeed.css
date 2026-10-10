@@ -66,6 +66,7 @@
   border-left-color: var(--danger);
   background: rgba(239, 68, 68, 0.05);
 }
+
 .detection-item:has(.badge-warning) {
   border-left-color: var(--warning);
   background: rgba(245, 158, 11, 0.04);

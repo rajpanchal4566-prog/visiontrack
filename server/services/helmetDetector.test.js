@@ -27,7 +27,7 @@ test('helmetDetector processes motorcycle rider image accurately', async () => {
   assert.ok(fs.existsSync(riderImagePath), 'Test rider image should exist');
 
   const imageBuffer = fs.readFileSync(riderImagePath);
-  
+
   // Warmup call includes model loading
   const warmup = await detectHelmet(imageBuffer, { x: 50, y: 10, width: 250, height: 210 });
   assert.equal(warmup.success, true);

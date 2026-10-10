@@ -19,7 +19,7 @@
 .tactical-login-grid {
   position: absolute;
   inset: 0;
-  background-image: 
+  background-image:
     linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
   background-size: 36px 36px;

@@ -219,9 +219,11 @@
   .sidebar-mobile-toggle {
     display: flex;
   }
+
   .tactical-sidebar {
     transform: translateX(-100%);
   }
+
   .tactical-sidebar--open {
     transform: translateX(0);
   }

@@ -33,7 +33,7 @@ export default function CameraNetwork() {
 
   useEffect(() => {
     loadCameras();
-    camerasApi.getPresets().then(setPresets).catch(() => {});
+    camerasApi.getPresets().then(setPresets).catch(() => { });
   }, []);
 
   function openRegisterModal(cam = null) {

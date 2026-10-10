@@ -82,9 +82,17 @@
   font-weight: 600;
 }
 
-.text-nominal { color: var(--tertiary-fixed); }
-.text-dim { color: var(--on-surface-variant); }
-.text-cyan { color: var(--primary); }
+.text-nominal {
+  color: var(--tertiary-fixed);
+}
+
+.text-dim {
+  color: var(--on-surface-variant);
+}
+
+.text-cyan {
+  color: var(--primary);
+}
 
 /* Right Section */
 .tactical-topbar__right {
